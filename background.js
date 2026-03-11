@@ -624,17 +624,17 @@ async function extractPatentSectionsFromPage(
   };
 
   const claimSectionSelectors = [
-    "section[itemprop='claims']",
     "#claims",
-    "[itemprop='claims']",
+    "section#claims",
+    "section[itemprop='claims']",
     "section.claims",
     "div.claims",
   ];
   const claimBlockSelectors = [
     "#claims .claim",
     "#claims .claim-text",
-    "[itemprop='claims'] .claim",
-    "[itemprop='claims'] .claim-text",
+    "section[itemprop='claims'] .claim",
+    "section[itemprop='claims'] .claim-text",
   ];
   const descSectionSelectors = [
     "section[itemprop='description']",
@@ -657,9 +657,11 @@ async function extractPatentSectionsFromPage(
     "[itemprop='claims'] h3",
   ];
   const claimRootSelectors = [
-    "section[itemprop='claims']",
-    "[itemprop='claims']",
     "#claims",
+    "section#claims",
+    "section[itemprop='claims']",
+    "div[itemprop='claims']",
+    "[itemprop='claims']",
   ];
 
   const parsePositiveInt = (value) => {
@@ -674,11 +676,28 @@ async function extractPatentSectionsFromPage(
   };
 
   const findClaimRoot = () => {
+    const isGoodClaimRoot = (node) => {
+      if (!node) return false;
+      const hasClaimNodes = Boolean(node.querySelector(".claim-text, .claim"));
+      if (hasClaimNodes) return true;
+
+      const tag = String(node.tagName || "").toUpperCase();
+      const id = String(node.id || "").toLowerCase();
+      if (id === "claims" && (tag === "SECTION" || tag === "DIV")) return true;
+
+      return false;
+    };
+
+    let fallbackNode = null;
     for (const selector of claimRootSelectors) {
-      const node = document.querySelector(selector);
-      if (node) return node;
+      const nodes = document.querySelectorAll(selector);
+      for (const node of nodes) {
+        if (isGoodClaimRoot(node)) return node;
+        if (!fallbackNode) fallbackNode = node;
+      }
     }
-    return null;
+
+    return fallbackNode;
   };
 
   const getClaimCountFromHeading = (claimRoot) => {
