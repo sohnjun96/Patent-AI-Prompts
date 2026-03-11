@@ -241,6 +241,161 @@ body {
   cursor: not-allowed;
 }
 
+.highlightPanel {
+  margin-bottom: 12px;
+  border: 1px solid #dbe5f1;
+  border-radius: 10px;
+  background: #f8fafc;
+  padding: 10px;
+}
+
+.highlightPanelHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.highlightPanelHead h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.highlightPanelHead button {
+  border: 0;
+  border-radius: 9px;
+  background: #2563eb;
+  color: #fff;
+  font-weight: 600;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.highlightPanelHead button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.highlightLegend {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.highlightLegend.empty {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.highlightLegendChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #fff;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.highlightLegendDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(15, 23, 42, 0.15);
+}
+
+.highlightGroupsEditor {
+  margin-top: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.highlightGroupsEditor.empty {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.highlightGroupCard {
+  border: 1px solid #dbe5f1;
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px;
+}
+
+.highlightGroupCardHead {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.highlightGroupCard input[type="text"],
+.highlightGroupCard textarea {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font: inherit;
+}
+
+.highlightGroupCard input[type="text"] {
+  padding: 7px 8px;
+}
+
+.highlightColorInput {
+  width: 38px;
+  height: 34px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 2px;
+  background: #fff;
+}
+
+.highlightGroupRemoveBtn {
+  border: 0;
+  border-radius: 8px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-weight: 600;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+
+.highlightTermsInput {
+  width: 100%;
+  min-height: 72px;
+  padding: 8px;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+.highlightGroupHint {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.highlightPanelActions {
+  margin-top: 8px;
+}
+
+.highlightAddBtn {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #0f172a;
+  font-weight: 600;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+
+.highlightAddBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .markdownView {
   margin-top: 10px;
   border: 1px solid #dbe5f1;
@@ -409,6 +564,14 @@ body {
   white-space: pre-wrap;
 }
 
+.termHighlight {
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 0 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
 .analysisTitle {
   margin: 10px 0 8px;
   font-weight: 700;
@@ -475,7 +638,15 @@ body {
   border-radius: 8px;
   background: #f8fafc;
   padding: 8px;
-  line-height: 1.4;
+  line-height: 1.42;
+}
+
+.claimMiniTitle {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.claimMiniBody {
   white-space: pre-wrap;
 }
 
@@ -753,6 +924,14 @@ code {
   }
 
   .descriptionColumns {
+    grid-template-columns: 1fr;
+  }
+
+  .highlightPanelHead {
+    flex-direction: column;
+  }
+
+  .highlightGroupCardHead {
     grid-template-columns: 1fr;
   }
 

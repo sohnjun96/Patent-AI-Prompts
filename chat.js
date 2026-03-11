@@ -20,6 +20,11 @@ const followupSendBtnEl = document.getElementById("followupSendBtn");
 const analyzeAllClaimsBtnEl = document.getElementById("analyzeAllClaimsBtn");
 const claimsCountTextEl = document.getElementById("claimsCountText");
 const claimsCardsEl = document.getElementById("claimsCards");
+const generateHighlightsBtnEl = document.getElementById("generateHighlightsBtn");
+const highlightMetaEl = document.getElementById("highlightMeta");
+const highlightLegendEl = document.getElementById("highlightLegend");
+const highlightGroupsEditorEl = document.getElementById("highlightGroupsEditor");
+const addHighlightGroupBtnEl = document.getElementById("addHighlightGroupBtn");
 
 const descriptionClaimsColumnEl = document.getElementById("descriptionClaimsColumn");
 const descriptionRawEl = document.getElementById("descriptionRaw");
@@ -90,6 +95,7 @@ const PROMPT_PATHS = {
   summary: "prompts/summary.txt",
   followup: "prompts/followup_chat.txt",
   claimComponent: "prompts/claim_component.txt",
+  highlightTerms: "prompts/highlight_terms.txt",
   citationSearch: "prompts/citation_search.txt",
   inventiveStep: "prompts/inventive_step_review.txt",
   evidenceFind: "prompts/evidence_find.txt",
@@ -106,17 +112,30 @@ const state = {
   summaryMarkdown: "",
   claimItems: [],
   claimAnalyses: {},
+  highlightGroups: [],
   followupHistory: [],
   promptOutputs: createEmptyPromptOutputs(),
   settingModels: [],
 };
 
 let persistTimerId = null;
+let highlightGroupSeq = 1;
 let promptModalState = {
   key: "",
   title: "",
   text: "",
 };
+
+const HIGHLIGHT_COLOR_PALETTE = [
+  "#f59e0b",
+  "#10b981",
+  "#3b82f6",
+  "#ef4444",
+  "#8b5cf6",
+  "#14b8a6",
+  "#f97316",
+  "#84cc16",
+];
 
 const PROMPT_CARD_INFO = {
   citationSearch: {
@@ -170,6 +189,7 @@ function buildPersistedSession() {
     summaryMarkdown: state.summaryMarkdown,
     claimItems: state.claimItems,
     claimAnalyses: state.claimAnalyses,
+    highlightGroups: state.highlightGroups,
     followupHistory: state.followupHistory,
     promptOutputs: state.promptOutputs,
     promptOptions: {
@@ -415,6 +435,12 @@ function updateControls() {
   const canInteract = hasKey && hasPromptSet && hasPatent && !state.pending;
   const canPromptInteract = canInteract && hasClaimOne && canUseCitationBase;
   const canGenerateSummary = hasKey && hasPromptSet && hasPatent && !state.pending;
+  const canGenerateHighlights =
+    canInteract &&
+    state.claimItems.length > 0 &&
+    hasDescription &&
+    Boolean(state.prompts?.highlightTerms);
+  const canEditHighlights = hasPatent && !state.pending;
 
   keyNoticeEl.classList.toggle("hidden", hasKey);
 
@@ -426,6 +452,8 @@ function updateControls() {
   followupSendBtnEl.disabled = !(canInteract && hasSummary);
 
   analyzeAllClaimsBtnEl.disabled = !(canInteract && state.claimItems.length > 0);
+  generateHighlightsBtnEl.disabled = !canGenerateHighlights;
+  addHighlightGroupBtnEl.disabled = !canEditHighlights;
   generateCitationSearchPromptBtnEl.disabled = !(canPromptInteract && hasCutoffDate);
   generateInventiveStepPromptBtnEl.disabled =
     !(canPromptInteract && hasInventiveCitationNumbers);
@@ -436,6 +464,12 @@ function updateControls() {
 
   for (const button of document.querySelectorAll(".claimAnalyzeBtn")) {
     button.disabled = !canInteract;
+  }
+
+  for (const control of highlightGroupsEditorEl.querySelectorAll(
+    "input, textarea, button"
+  )) {
+    control.disabled = !canEditHighlights;
   }
 }
 
@@ -674,6 +708,9 @@ function extractJsonObjectText(text) {
   if (!cleaned) return "";
 
   if (cleaned.startsWith("{") && cleaned.endsWith("}")) {
+    return cleaned;
+  }
+  if (cleaned.startsWith("[") && cleaned.endsWith("]")) {
     return cleaned;
   }
 
@@ -946,6 +983,443 @@ function renderClaimsCountText() {
   claimsCountTextEl.textContent = `청구항 개수: ${extractedCount}`;
 }
 
+function nextHighlightGroupId() {
+  const id = `hg_${Date.now().toString(36)}_${highlightGroupSeq.toString(36)}`;
+  highlightGroupSeq += 1;
+  return id;
+}
+
+function normalizeHighlightColor(value, fallbackColor = "#f59e0b") {
+  const text = String(value || "").trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(text)) {
+    return text.toLowerCase();
+  }
+  return fallbackColor.toLowerCase();
+}
+
+function parseHighlightTerms(value) {
+  const raw = Array.isArray(value)
+    ? value
+    : typeof value === "string"
+      ? value.split(/[\n,;]+/g)
+      : [];
+
+  const output = [];
+  const seen = new Set();
+
+  for (const item of raw) {
+    if (item === null || item === undefined) continue;
+    if (typeof item === "object") continue;
+    const term = String(item || "").trim();
+    if (!term) continue;
+    const key = term.toLocaleLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(term);
+  }
+
+  output.sort((a, b) => b.length - a.length);
+  return output;
+}
+
+function sanitizeHighlightGroups(rawGroups, options = {}) {
+  const keepEmpty = options.keepEmpty === true;
+  if (!Array.isArray(rawGroups)) return [];
+
+  return rawGroups
+    .map((group, index) => {
+      const fallbackColor = HIGHLIGHT_COLOR_PALETTE[index % HIGHLIGHT_COLOR_PALETTE.length];
+
+      if (typeof group === "string") {
+        const terms = parseHighlightTerms(group);
+        if (terms.length === 0 && !keepEmpty) return null;
+        return {
+          id: nextHighlightGroupId(),
+          name: `용어군 ${index + 1}`,
+          color: fallbackColor,
+          terms,
+        };
+      }
+
+      if (!group || typeof group !== "object") return null;
+
+      const id = String(group.id || group.Id || nextHighlightGroupId());
+      const name = String(
+        group.name || group.Name || group.group || group.Group || `용어군 ${index + 1}`
+      ).trim();
+      const color = normalizeHighlightColor(
+        group.color || group.Color,
+        fallbackColor
+      );
+
+      const termsValue =
+        group.terms ??
+        group.Terms ??
+        group.keywords ??
+        group.Keywords ??
+        group.items ??
+        group.Items ??
+        group.term ??
+        group.Term ??
+        [];
+      const terms = parseHighlightTerms(termsValue);
+      if (terms.length === 0 && !keepEmpty) return null;
+
+      return {
+        id,
+        name: name || `용어군 ${index + 1}`,
+        color,
+        terms,
+      };
+    })
+    .filter(Boolean);
+}
+
+function colorHexToRgba(hexColor, alpha) {
+  const normalized = normalizeHighlightColor(hexColor).slice(1);
+  const r = Number.parseInt(normalized.slice(0, 2), 16);
+  const g = Number.parseInt(normalized.slice(2, 4), 16);
+  const b = Number.parseInt(normalized.slice(4, 6), 16);
+  const clampedAlpha = Math.min(1, Math.max(0, Number(alpha) || 0));
+  return `rgba(${r}, ${g}, ${b}, ${clampedAlpha})`;
+}
+
+function buildHighlightedHtml(rawText, groups = state.highlightGroups) {
+  const text = String(rawText || "");
+  if (!text) return "";
+
+  const normalizedGroups = sanitizeHighlightGroups(groups).filter(
+    (group) => group.terms.length > 0
+  );
+  if (normalizedGroups.length === 0) {
+    return escapeHtml(text);
+  }
+
+  const loweredText = text.toLocaleLowerCase();
+  const matches = [];
+
+  normalizedGroups.forEach((group) => {
+    group.terms.forEach((term) => {
+      const loweredTerm = term.toLocaleLowerCase();
+      if (!loweredTerm) return;
+      let searchIndex = 0;
+
+      while (searchIndex < loweredText.length) {
+        const foundAt = loweredText.indexOf(loweredTerm, searchIndex);
+        if (foundAt === -1) break;
+        matches.push({
+          start: foundAt,
+          end: foundAt + term.length,
+          group,
+        });
+        searchIndex = foundAt + loweredTerm.length;
+      }
+    });
+  });
+
+  if (matches.length === 0) {
+    return escapeHtml(text);
+  }
+
+  matches.sort((a, b) => {
+    if (a.start !== b.start) return a.start - b.start;
+    const lenDiff = b.end - b.start - (a.end - a.start);
+    if (lenDiff !== 0) return lenDiff;
+    return a.group.name.localeCompare(b.group.name);
+  });
+
+  const selectedMatches = [];
+  let cursor = 0;
+  for (const match of matches) {
+    if (match.start < cursor) continue;
+    selectedMatches.push(match);
+    cursor = match.end;
+  }
+
+  const htmlParts = [];
+  let lastIndex = 0;
+
+  for (const match of selectedMatches) {
+    if (match.start > lastIndex) {
+      htmlParts.push(escapeHtml(text.slice(lastIndex, match.start)));
+    }
+
+    const matchedText = text.slice(match.start, match.end);
+    const bgColor = colorHexToRgba(match.group.color, 0.24);
+    const borderColor = colorHexToRgba(match.group.color, 0.58);
+    htmlParts.push(
+      `<span class="termHighlight" style="background-color: ${escapeAttr(
+        bgColor
+      )}; border-color: ${escapeAttr(borderColor)};" title="${escapeAttr(
+        match.group.name
+      )}">${escapeHtml(matchedText)}</span>`
+    );
+    lastIndex = match.end;
+  }
+
+  if (lastIndex < text.length) {
+    htmlParts.push(escapeHtml(text.slice(lastIndex)));
+  }
+
+  return htmlParts.join("");
+}
+
+function renderHighlightMetaAndLegend() {
+  const groups = sanitizeHighlightGroups(state.highlightGroups, { keepEmpty: true });
+  state.highlightGroups = groups;
+
+  const totalTerms = groups.reduce((sum, group) => sum + group.terms.length, 0);
+  if (!state.patentData) {
+    highlightMetaEl.textContent = "공개번호 조회 후 용어 하이라이트를 사용할 수 있습니다.";
+  } else if (groups.length === 0) {
+    highlightMetaEl.textContent = "아직 추출된 용어군이 없습니다.";
+  } else {
+    highlightMetaEl.textContent = `${groups.length}개 용어군 / ${totalTerms}개 용어`;
+  }
+
+  highlightLegendEl.textContent = "";
+  if (groups.length === 0) {
+    highlightLegendEl.textContent = "아직 용어군이 없습니다.";
+    highlightLegendEl.classList.add("empty");
+    return;
+  }
+
+  highlightLegendEl.classList.remove("empty");
+  groups.forEach((group) => {
+    const chip = document.createElement("span");
+    chip.className = "highlightLegendChip";
+
+    const dot = document.createElement("span");
+    dot.className = "highlightLegendDot";
+    dot.style.backgroundColor = group.color;
+
+    const text = document.createElement("span");
+    text.textContent = `${group.name} (${group.terms.length})`;
+
+    chip.append(dot, text);
+    highlightLegendEl.appendChild(chip);
+  });
+}
+
+function renderHighlightGroupsEditor() {
+  const groups = sanitizeHighlightGroups(state.highlightGroups, { keepEmpty: true });
+  state.highlightGroups = groups;
+
+  highlightGroupsEditorEl.textContent = "";
+  if (groups.length === 0) {
+    highlightGroupsEditorEl.textContent = "API 추출 또는 수동 추가로 용어군을 만들어 주세요.";
+    highlightGroupsEditorEl.classList.add("empty");
+    return;
+  }
+
+  highlightGroupsEditorEl.classList.remove("empty");
+
+  groups.forEach((group) => {
+    const card = document.createElement("article");
+    card.className = "highlightGroupCard";
+    card.dataset.groupId = group.id;
+
+    const head = document.createElement("div");
+    head.className = "highlightGroupCardHead";
+
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.className = "highlightGroupNameInput";
+    nameInput.value = group.name;
+    nameInput.placeholder = "용어군 이름";
+
+    const colorInput = document.createElement("input");
+    colorInput.type = "color";
+    colorInput.className = "highlightColorInput";
+    colorInput.value = normalizeHighlightColor(group.color);
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "highlightGroupRemoveBtn";
+    removeBtn.textContent = "삭제";
+
+    head.append(nameInput, colorInput, removeBtn);
+
+    const termsInput = document.createElement("textarea");
+    termsInput.className = "highlightTermsInput";
+    termsInput.placeholder = "용어를 줄바꿈 또는 쉼표로 구분해 입력하세요.";
+    termsInput.value = group.terms.join("\n");
+
+    const hint = document.createElement("div");
+    hint.className = "highlightGroupHint";
+    hint.textContent = `${group.terms.length}개 용어`;
+
+    card.append(head, termsInput, hint);
+    highlightGroupsEditorEl.appendChild(card);
+  });
+}
+
+function parseHighlightGroupsFromModel(rawText) {
+  const raw = String(rawText || "").trim();
+  if (!raw) {
+    throw new Error("하이라이트 응답이 비어 있습니다.");
+  }
+
+  const jsonText = extractJsonObjectText(raw);
+  let parsed = null;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch (_error) {
+    throw new Error("하이라이트 응답을 JSON으로 해석하지 못했습니다.");
+  }
+
+  const rawGroups = Array.isArray(parsed)
+    ? parsed
+    : parsed?.TermGroups ||
+      parsed?.termGroups ||
+      parsed?.HighlightGroups ||
+      parsed?.highlightGroups ||
+      parsed?.groups ||
+      [];
+
+  if (!Array.isArray(rawGroups) || rawGroups.length === 0) {
+    throw new Error("하이라이트 용어군이 응답에 없습니다.");
+  }
+
+  const groups = sanitizeHighlightGroups(rawGroups);
+  if (groups.length === 0) {
+    throw new Error("하이라이트 용어군을 추출하지 못했습니다.");
+  }
+
+  return groups.map((group, index) => ({
+    ...group,
+    color: normalizeHighlightColor(
+      group.color,
+      HIGHLIGHT_COLOR_PALETTE[index % HIGHLIGHT_COLOR_PALETTE.length]
+    ),
+  }));
+}
+
+function buildClaimsForHighlightPrompt() {
+  if (state.claimItems.length === 0) {
+    return String(state.patentData?.claims || "").trim();
+  }
+
+  return state.claimItems
+    .map((claimText, index) => `[청구항 ${index + 1}]\n${claimText}`)
+    .join("\n\n")
+    .trim();
+}
+
+function applyHighlightGroups(nextGroups, options = {}) {
+  const renderEditor = options.renderEditor !== false;
+  const persist = options.persist !== false;
+
+  state.highlightGroups = sanitizeHighlightGroups(nextGroups, {
+    keepEmpty: true,
+  });
+
+  renderHighlightMetaAndLegend();
+  if (renderEditor) {
+    renderHighlightGroupsEditor();
+  }
+  renderClaimsCards();
+  renderDescriptionTab();
+
+  if (persist) {
+    queuePersistSession();
+  }
+}
+
+function createEmptyHighlightGroup() {
+  const groupIndex = state.highlightGroups.length;
+  return {
+    id: nextHighlightGroupId(),
+    name: `용어군 ${groupIndex + 1}`,
+    color: HIGHLIGHT_COLOR_PALETTE[groupIndex % HIGHLIGHT_COLOR_PALETTE.length],
+    terms: [],
+  };
+}
+
+function updateHighlightGroupFromEditor(groupId, updater) {
+  if (!groupId) return false;
+  let changed = false;
+
+  const nextGroups = state.highlightGroups.map((group) => {
+    if (group.id !== groupId) return group;
+    changed = true;
+    return updater(group);
+  });
+
+  if (!changed) return false;
+  applyHighlightGroups(nextGroups, { renderEditor: false });
+  return true;
+}
+
+function removeHighlightGroup(groupId) {
+  const nextGroups = state.highlightGroups.filter((group) => group.id !== groupId);
+  if (nextGroups.length === state.highlightGroups.length) return;
+  applyHighlightGroups(nextGroups);
+}
+
+function addHighlightGroup() {
+  const nextGroups = [...state.highlightGroups, createEmptyHighlightGroup()];
+  applyHighlightGroups(nextGroups);
+}
+
+function handleHighlightEditorChange(event) {
+  const target = event.target;
+  const card = target.closest(".highlightGroupCard");
+  if (!card) return;
+
+  const groupId = String(card.dataset.groupId || "");
+  if (!groupId) return;
+
+  if (target.classList.contains("highlightGroupNameInput")) {
+    const nextName = String(target.value || "");
+    const updated = updateHighlightGroupFromEditor(groupId, (group) => ({
+      ...group,
+      name: nextName,
+    }));
+    if (updated) {
+      renderHighlightGroupsEditor();
+      updateControls();
+    }
+    return;
+  }
+
+  if (target.classList.contains("highlightColorInput")) {
+    const nextColor = normalizeHighlightColor(target.value);
+    const updated = updateHighlightGroupFromEditor(groupId, (group) => ({
+      ...group,
+      color: nextColor,
+    }));
+    if (updated) {
+      renderHighlightGroupsEditor();
+      updateControls();
+    }
+    return;
+  }
+
+  if (target.classList.contains("highlightTermsInput")) {
+    const nextTerms = parseHighlightTerms(target.value);
+    const updated = updateHighlightGroupFromEditor(groupId, (group) => ({
+      ...group,
+      terms: nextTerms,
+    }));
+    if (updated) {
+      renderHighlightGroupsEditor();
+      updateControls();
+    }
+  }
+}
+
+function handleHighlightEditorClick(event) {
+  const button = event.target.closest(".highlightGroupRemoveBtn");
+  if (!button) return;
+
+  const card = button.closest(".highlightGroupCard");
+  const groupId = String(card?.dataset.groupId || "");
+  if (!groupId) return;
+
+  removeHighlightGroup(groupId);
+}
+
 function setPatentMeta(data) {
   const patentId = data?.patentId || `KR${data?.publicationNumber || ""}A`;
   const title = data?.title || "(제목 없음)";
@@ -1020,9 +1494,15 @@ function renderFollowupChat() {
 }
 
 function renderDescriptionTab() {
+  const highlightGroups = sanitizeHighlightGroups(state.highlightGroups);
   const description = state.patentData?.description || "";
-  descriptionRawEl.textContent = description || EMPTY_DESCRIPTION;
-  descriptionRawEl.classList.toggle("empty", !description);
+  if (!description) {
+    descriptionRawEl.textContent = EMPTY_DESCRIPTION;
+    descriptionRawEl.classList.add("empty");
+  } else {
+    descriptionRawEl.innerHTML = buildHighlightedHtml(description, highlightGroups);
+    descriptionRawEl.classList.remove("empty");
+  }
 
   descriptionClaimsColumnEl.textContent = "";
   const claims = state.claimItems;
@@ -1036,7 +1516,16 @@ function renderDescriptionTab() {
   claims.forEach((claimText, index) => {
     const card = document.createElement("article");
     card.className = "claimMiniCard";
-    card.textContent = `[청구항 ${index + 1}]\n${claimText}`;
+
+    const title = document.createElement("div");
+    title.className = "claimMiniTitle";
+    title.textContent = `청구항 ${index + 1}`;
+
+    const body = document.createElement("div");
+    body.className = "claimMiniBody";
+    body.innerHTML = buildHighlightedHtml(claimText, highlightGroups);
+
+    card.append(title, body);
     descriptionClaimsColumnEl.appendChild(card);
   });
 }
@@ -1044,6 +1533,7 @@ function renderDescriptionTab() {
 function renderClaimsCards() {
   claimsCardsEl.textContent = "";
   renderClaimsCountText();
+  const highlightGroups = sanitizeHighlightGroups(state.highlightGroups);
 
   if (state.claimItems.length === 0) {
     const empty = document.createElement("div");
@@ -1074,7 +1564,7 @@ function renderClaimsCards() {
 
     const text = document.createElement("pre");
     text.className = "claimText";
-    text.textContent = claimText;
+    text.innerHTML = buildHighlightedHtml(claimText, highlightGroups);
 
     const analysisTitle = document.createElement("div");
     analysisTitle.className = "analysisTitle";
@@ -1097,6 +1587,7 @@ function clearPatentViews(options = {}) {
   state.summaryMarkdown = "";
   state.claimItems = [];
   state.claimAnalyses = {};
+  state.highlightGroups = [];
   state.followupHistory = [];
   state.promptOutputs = createEmptyPromptOutputs();
   state.patentData = null;
@@ -1104,6 +1595,8 @@ function clearPatentViews(options = {}) {
   clearPatentMeta();
   setMarkdown(summaryMarkdownEl, "", EMPTY_SUMMARY);
   renderFollowupChat();
+  renderHighlightMetaAndLegend();
+  renderHighlightGroupsEditor();
   renderClaimsCards();
   renderDescriptionTab();
   renderPromptCards();
@@ -1144,6 +1637,8 @@ function renderPatentViewsFromState() {
 
   setMarkdown(summaryMarkdownEl, state.summaryMarkdown, EMPTY_SUMMARY);
   renderFollowupChat();
+  renderHighlightMetaAndLegend();
+  renderHighlightGroupsEditor();
   renderClaimsCards();
   renderDescriptionTab();
   renderPromptCards();
@@ -1167,6 +1662,9 @@ function applyPersistedSession(session) {
         .filter(Boolean)
     : splitClaims(state.patentData?.claims || "");
   state.claimAnalyses = sanitizeClaimAnalysesMap(session.claimAnalyses);
+  state.highlightGroups = sanitizeHighlightGroups(session.highlightGroups, {
+    keepEmpty: true,
+  });
   state.followupHistory = sanitizeFollowupHistory(session.followupHistory);
   state.promptOutputs = {
     citationSearch: String(
@@ -1342,6 +1840,8 @@ async function runPrimaryFlow(publicationNumber) {
     state.claimItems = splitClaims(patentData.claims);
 
     setPatentMeta(patentData);
+    renderHighlightMetaAndLegend();
+    renderHighlightGroupsEditor();
     renderClaimsCards();
     renderDescriptionTab();
     updateStatus("원문 로딩 완료: 요약 탭에서 '요약 생성' 버튼을 눌러주세요.");
@@ -1375,6 +1875,51 @@ async function generateSummaryForCurrentPatent() {
 
     setMarkdown(summaryMarkdownEl, summary, EMPTY_SUMMARY);
     updateStatus("완료: 요약이 생성되었습니다.");
+  } catch (error) {
+    updateStatus(`오류: ${error.message}`, true);
+  } finally {
+    setPending(false);
+    queuePersistSession();
+  }
+}
+
+async function generateHighlightsForCurrentPatent() {
+  if (!state.patentData) {
+    updateStatus("먼저 공개번호로 특허를 불러와 주세요.", true);
+    return;
+  }
+  if (!state.prompts?.highlightTerms) {
+    updateStatus("하이라이트 프롬프트를 불러오지 못했습니다.", true);
+    return;
+  }
+  if (state.claimItems.length === 0) {
+    updateStatus("하이라이트를 위해 청구항이 필요합니다.", true);
+    return;
+  }
+
+  const descriptionText = String(state.patentData?.description || "").trim();
+  if (!descriptionText) {
+    updateStatus("하이라이트를 위해 발명의 설명이 필요합니다.", true);
+    return;
+  }
+
+  setPending(true);
+  updateStatus("하이라이트 용어군 추출 중입니다...");
+
+  try {
+    const highlightPrompt = applyTemplate(
+      state.prompts.highlightTerms,
+      basePromptVariables({
+        "{청구항}": buildClaimsForHighlightPrompt(),
+        "{발명의 설명}": descriptionText,
+      })
+    );
+
+    const responseText = await requestModel(highlightPrompt, 0.1);
+    applyHighlightGroups(parseHighlightGroupsFromModel(responseText), {
+      persist: false,
+    });
+    updateStatus("완료: 하이라이트 용어군을 생성했습니다.");
   } catch (error) {
     updateStatus(`오류: ${error.message}`, true);
   } finally {
@@ -1726,12 +2271,32 @@ analyzeAllClaimsBtnEl.addEventListener("click", () => {
   analyzeAllClaims();
 });
 
+generateHighlightsBtnEl.addEventListener("click", () => {
+  if (state.pending) return;
+  generateHighlightsForCurrentPatent();
+});
+
 claimsCardsEl.addEventListener("click", (event) => {
   const button = event.target.closest(".claimAnalyzeBtn");
   if (!button || state.pending) return;
   const index = Number(button.dataset.index);
   if (Number.isNaN(index)) return;
   analyzeClaim(index);
+});
+
+addHighlightGroupBtnEl.addEventListener("click", () => {
+  if (state.pending) return;
+  addHighlightGroup();
+});
+
+highlightGroupsEditorEl.addEventListener("change", (event) => {
+  if (state.pending) return;
+  handleHighlightEditorChange(event);
+});
+
+highlightGroupsEditorEl.addEventListener("click", (event) => {
+  if (state.pending) return;
+  handleHighlightEditorClick(event);
 });
 
 generateCitationSearchPromptBtnEl.addEventListener("click", () => {
