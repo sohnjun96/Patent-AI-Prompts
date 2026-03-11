@@ -35,23 +35,66 @@
       </section>
 
       <section class="card">
-        <h2>프롬프트 바로 전송</h2>
+        <h2>프롬프트 입력 설정</h2>
+        <label class="blockLabel">검색 기반 선택</label>
+        <div class="selectGroup">
+          <label class="checkLine">
+            <input
+              id="sourceModeSummary"
+              type="radio"
+              name="sourceMode"
+              value="summary"
+              checked
+            />
+            발명의 요약 사용
+          </label>
+          <label class="checkLine">
+            <input
+              id="sourceModeDescription"
+              type="radio"
+              name="sourceMode"
+              value="description"
+            />
+            발명의 설명 사용
+          </label>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>프롬프트 생성/전송</h2>
         <p class="metaText">
-          버튼을 누르면 ChatGPT 입력창에 붙여넣고 바로 전송합니다.
+          각 카드에서 입력값을 채우고 생성한 뒤, 바로 ChatGPT로 전송할 수 있습니다.
         </p>
 
         <div class="promptGrid">
           <article class="promptCard">
             <div class="promptCardHead">
-              <h3>인용발명 검색</h3>
-              <button
-                class="sendPromptBtn"
-                data-kind="citationSearch"
-                type="button"
-              >
-                붙여넣기+전송
-              </button>
+              <h3>1. 인용발명 검색</h3>
+              <div class="promptActions">
+                <button
+                  class="generatePromptBtn ghostButton"
+                  data-kind="citationSearch"
+                  type="button"
+                >
+                  생성
+                </button>
+                <button
+                  class="sendPromptBtn"
+                  data-kind="citationSearch"
+                  type="button"
+                >
+                  전송
+                </button>
+              </div>
             </div>
+            <label class="promptFieldLabel" for="citationCutoffDateInput">
+              특허판단 기준일
+            </label>
+            <input
+              id="citationCutoffDateInput"
+              class="promptFieldInput"
+              type="date"
+            />
             <div id="promptPreview-citationSearch" class="promptPreview empty">
               아직 생성된 프롬프트가 없습니다.
             </div>
@@ -59,15 +102,33 @@
 
           <article class="promptCard">
             <div class="promptCardHead">
-              <h3>진보성 판단</h3>
-              <button
-                class="sendPromptBtn"
-                data-kind="inventiveStep"
-                type="button"
-              >
-                붙여넣기+전송
-              </button>
+              <h3>2. 진보성 판단</h3>
+              <div class="promptActions">
+                <button
+                  class="generatePromptBtn ghostButton"
+                  data-kind="inventiveStep"
+                  type="button"
+                >
+                  생성
+                </button>
+                <button
+                  class="sendPromptBtn"
+                  data-kind="inventiveStep"
+                  type="button"
+                >
+                  전송
+                </button>
+              </div>
             </div>
+            <label class="promptFieldLabel" for="inventiveStepCitationNumbersInput">
+              검토할 인용발명 번호
+            </label>
+            <input
+              id="inventiveStepCitationNumbersInput"
+              class="promptFieldInput"
+              type="text"
+              placeholder="예: 1, 2, 5"
+            />
             <div id="promptPreview-inventiveStep" class="promptPreview empty">
               아직 생성된 프롬프트가 없습니다.
             </div>
@@ -75,10 +136,48 @@
 
           <article class="promptCard">
             <div class="promptCardHead">
-              <h3>증거찾기</h3>
-              <button class="sendPromptBtn" data-kind="evidenceFind" type="button">
-                붙여넣기+전송
-              </button>
+              <h3>3. 증거찾기</h3>
+              <div class="promptActions">
+                <button
+                  class="generatePromptBtn ghostButton"
+                  data-kind="evidenceFind"
+                  type="button"
+                >
+                  생성
+                </button>
+                <button class="sendPromptBtn" data-kind="evidenceFind" type="button">
+                  전송
+                </button>
+              </div>
+            </div>
+            <div class="promptFieldRow">
+              <div>
+                <label class="promptFieldLabel" for="evidenceClaimNumberInput">
+                  증거를 찾을 청구항 번호
+                </label>
+                <input
+                  id="evidenceClaimNumberInput"
+                  class="promptFieldInput"
+                  type="number"
+                  min="1"
+                  step="1"
+                  placeholder="예: 1"
+                />
+              </div>
+              <div>
+                <label
+                  class="promptFieldLabel"
+                  for="evidenceCitationNumbersInput"
+                >
+                  검토할 인용발명 번호
+                </label>
+                <input
+                  id="evidenceCitationNumbersInput"
+                  class="promptFieldInput"
+                  type="text"
+                  placeholder="비우면 2번 카드 번호 사용"
+                />
+              </div>
             </div>
             <div id="promptPreview-evidenceFind" class="promptPreview empty">
               아직 생성된 프롬프트가 없습니다.
@@ -87,15 +186,33 @@
 
           <article class="promptCard">
             <div class="promptCardHead">
-              <h3>논문 인용문구 정리</h3>
-              <button
-                class="sendPromptBtn"
-                data-kind="citationFormat"
-                type="button"
-              >
-                붙여넣기+전송
-              </button>
+              <h3>4. 논문 인용문구 정리</h3>
+              <div class="promptActions">
+                <button
+                  class="generatePromptBtn ghostButton"
+                  data-kind="citationFormat"
+                  type="button"
+                >
+                  생성
+                </button>
+                <button
+                  class="sendPromptBtn"
+                  data-kind="citationFormat"
+                  type="button"
+                >
+                  전송
+                </button>
+              </div>
             </div>
+            <label class="promptFieldLabel" for="citationFormatNumbersInput">
+              인용발명 번호
+            </label>
+            <input
+              id="citationFormatNumbersInput"
+              class="promptFieldInput"
+              type="text"
+              placeholder="예: 2, 4"
+            />
             <div id="promptPreview-citationFormat" class="promptPreview empty">
               아직 생성된 프롬프트가 없습니다.
             </div>

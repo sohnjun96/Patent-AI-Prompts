@@ -1,19 +1,55 @@
 const PATENT_WAIT_MS = 40_000;
-const EXTRACTION_WAIT_MS = 20_000;
+const EXTRACTION_WAIT_MS = 35_000;
 const SECTION_CHAR_LIMIT = 22_000;
 const CLAIM_STABILIZE_MS = 600;
+const EXTRACTION_MAX_ATTEMPTS = 2;
 const CHATGPT_PROMPT_SELECTOR = "#prompt-textarea";
 const CHATGPT_SUBMIT_SELECTOR = "#composer-submit-button";
 
 chrome.action.onClicked.addListener((tab) => {
-  if (tab?.id && isChatGptUrl(tab.url)) {
-    openSidePanelForTab(tab.id).catch(() => {
-      openFullPageApp();
+  if (isChatGptTab(tab)) {
+    openSidePanelFromAction(tab, (opened) => {
+      if (!opened) {
+        openFullPageApp();
+      }
     });
     return;
   }
 
-  openFullPageApp();
+  if (tab?.id) {
+    getTab(tab.id)
+      .then((freshTab) => {
+        if (isChatGptTab(freshTab)) {
+          openSidePanelFromAction(freshTab, (opened) => {
+            if (!opened) {
+              openFullPageApp();
+            }
+          });
+          return;
+        }
+        openFullPageApp();
+      })
+      .catch(() => {
+        openFullPageApp();
+      });
+    return;
+  }
+
+  queryActiveTab()
+    .then((activeTab) => {
+      if (isChatGptTab(activeTab)) {
+        openSidePanelFromAction(activeTab, (opened) => {
+          if (!opened) {
+            openFullPageApp();
+          }
+        });
+        return;
+      }
+      openFullPageApp();
+    })
+    .catch(() => {
+      openFullPageApp();
+    });
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -69,8 +105,16 @@ function openFullPageApp() {
 }
 
 function isChatGptUrl(url) {
-  return /^https:\/\/(chatgpt\.com|chat\.openai\.com)\//i.test(
+  return /^https:\/\/(chatgpt\.com|chat\.openai\.com)(\/|$)/i.test(
     String(url || "")
+  );
+}
+
+function isChatGptTab(tab) {
+  return (
+    isChatGptUrl(tab?.url) ||
+    isChatGptUrl(tab?.pendingUrl) ||
+    /chatgpt/i.test(String(tab?.title || ""))
   );
 }
 
@@ -102,13 +146,13 @@ async function resolveChatGptTab(preferredTabId) {
   const preferredId = Number(preferredTabId);
   if (Number.isInteger(preferredId) && preferredId > 0) {
     const tab = await getTab(preferredId).catch(() => null);
-    if (tab?.id && isChatGptUrl(tab.url)) {
+    if (tab?.id && isChatGptTab(tab)) {
       return tab;
     }
   }
 
   const activeTab = await queryActiveTab();
-  if (activeTab?.id && isChatGptUrl(activeTab.url)) {
+  if (activeTab?.id && isChatGptTab(activeTab)) {
     return activeTab;
   }
 
@@ -141,13 +185,92 @@ async function openSidePanelForTab(tabId) {
     throw new Error("현재 브라우저에서 side panel API를 지원하지 않습니다.");
   }
 
+  const tab = await getTab(tabId).catch(() => null);
+
   await chrome.sidePanel.setOptions({
     tabId,
     enabled: true,
     path: "sidepanel.html",
   });
 
-  await chrome.sidePanel.open({ tabId });
+  try {
+    await chrome.sidePanel.open({ tabId });
+  } catch (error) {
+    if (!tab?.windowId) throw error;
+    await chrome.sidePanel.open({ windowId: tab.windowId });
+  }
+}
+
+function openSidePanelFromAction(tab, onDone) {
+  let done = false;
+  const finish = (ok) => {
+    if (done) return;
+    done = true;
+    onDone(Boolean(ok));
+  };
+
+  if (!chrome.sidePanel?.open) {
+    finish(false);
+    return;
+  }
+
+  const openWithWindow = () => {
+    if (!tab?.windowId && !tab?.id) {
+      finish(false);
+      return;
+    }
+
+    const tryOpenByTab = () => {
+      if (!tab?.id) {
+        finish(false);
+        return;
+      }
+      chrome.sidePanel.open({ tabId: tab.id }, () => {
+        if (!chrome.runtime.lastError) {
+          finish(true);
+          return;
+        }
+        console.warn("Failed to open side panel by tabId:", chrome.runtime.lastError);
+        finish(false);
+      });
+    };
+
+    if (tab?.windowId) {
+      chrome.sidePanel.open({ windowId: tab.windowId }, () => {
+        if (!chrome.runtime.lastError) {
+          finish(true);
+          return;
+        }
+        console.warn(
+          "Failed to open side panel by windowId:",
+          chrome.runtime.lastError
+        );
+        tryOpenByTab();
+      });
+      return;
+    }
+
+    tryOpenByTab();
+  };
+
+  if (chrome.sidePanel.setOptions && tab?.id) {
+    chrome.sidePanel.setOptions(
+      {
+        tabId: tab.id,
+        enabled: true,
+        path: "sidepanel.html",
+      },
+      () => {
+        if (chrome.runtime.lastError) {
+          console.warn("Failed to set side panel options:", chrome.runtime.lastError);
+        }
+        openWithWindow();
+      }
+    );
+    return;
+  }
+
+  openWithWindow();
 }
 
 function normalizePublicationNumber(value) {
@@ -265,6 +388,42 @@ function runExtraction(tabId) {
   });
 }
 
+function reloadTab(tabId) {
+  return new Promise((resolve, reject) => {
+    chrome.tabs.reload(tabId, { bypassCache: true }, () => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
+async function runExtractionWithRetry(tabId, maxAttempts = EXTRACTION_MAX_ATTEMPTS) {
+  let lastExtracted = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    lastExtracted = await runExtraction(tabId);
+    if (!lastExtracted) {
+      continue;
+    }
+
+    const hasClaims = Boolean(String(lastExtracted.claims || "").trim());
+    const hasDescription = Boolean(String(lastExtracted.description || "").trim());
+    if (hasClaims || hasDescription) {
+      return lastExtracted;
+    }
+
+    if (attempt < maxAttempts) {
+      await reloadTab(tabId);
+      await waitForTabComplete(tabId, PATENT_WAIT_MS);
+    }
+  }
+
+  return lastExtracted;
+}
+
 async function collectPatentSections(publicationNumber, returnFocusTabId = null) {
   const { normalized, url } = buildPatentUrl(publicationNumber);
   let tabId = null;
@@ -273,7 +432,7 @@ async function collectPatentSections(publicationNumber, returnFocusTabId = null)
     tabId = await createFocusedTab(url);
     await waitForTabComplete(tabId, PATENT_WAIT_MS);
 
-    const extracted = await runExtraction(tabId);
+    const extracted = await runExtractionWithRetry(tabId);
     if (!extracted) {
       throw new Error("특허 데이터 추출 결과가 비어 있습니다.");
     }
@@ -522,6 +681,108 @@ async function extractPatentSectionsFromPage(
     return null;
   };
 
+  const htmlEntityDecoder = document.createElement("textarea");
+  const decodeHtmlEntities = (value) => {
+    htmlEntityDecoder.innerHTML = String(value || "");
+    return htmlEntityDecoder.value;
+  };
+
+  const htmlToText = (value) =>
+    cleanText(
+      decodeHtmlEntities(
+        String(value || "")
+          .replace(/<br\s*\/?>/gi, "\n")
+          .replace(/<\/p>/gi, "\n")
+          .replace(/<[^>]+>/g, " ")
+      )
+    );
+
+  const splitNumberedClaimChunks = (text) => {
+    const source = cleanText(text);
+    if (!source) return [];
+
+    const anchors = [];
+    const regex = /^\s*(\d+)\.\s+/gm;
+    let match = null;
+    while ((match = regex.exec(source)) !== null) {
+      anchors.push({ index: match.index });
+    }
+    if (anchors.length === 0) return [];
+
+    const chunks = [];
+    for (let i = 0; i < anchors.length; i += 1) {
+      const start = anchors[i].index;
+      const end = i + 1 < anchors.length ? anchors[i + 1].index : source.length;
+      const chunk = source.slice(start, end).trim();
+      if (chunk) chunks.push(chunk);
+    }
+    return chunks;
+  };
+
+  const getClaimsSectionMarkup = () => {
+    const claimRoot = findClaimRoot();
+    if (claimRoot?.outerHTML) {
+      return claimRoot.outerHTML;
+    }
+
+    const fullHtml = document.documentElement?.innerHTML || "";
+    const match = fullHtml.match(
+      /<section[^>]*itemprop=["']claims["'][^>]*>[\s\S]*?<\/section>/i
+    );
+    return match ? match[0] : "";
+  };
+
+  const extractClaimsFromMarkupFallback = () => {
+    const markup = getClaimsSectionMarkup();
+    if (!markup) {
+      return {
+        claimsText: "",
+        claimNodeCount: 0,
+        claimCount: null,
+      };
+    }
+
+    const countMatch =
+      markup.match(/itemprop=["']count["'][^>]*>\s*(\d+)\s*</i) ||
+      markup.match(/claims\s*\((\d+)\)/i);
+    const parsedCount = parsePositiveInt(countMatch?.[1] || "");
+
+    const claimItems = [];
+    const seen = new Set();
+
+    const claimRegex =
+      /<div[^>]*num=["']?(\d+)["']?[^>]*class=["'][^"']*\bclaim\b[^"']*["'][^>]*>[\s\S]*?<div[^>]*class=["'][^"']*claim-text[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi;
+    let match = null;
+    while ((match = claimRegex.exec(markup)) !== null) {
+      const claimNo = parsePositiveInt(match[1]);
+      const body = htmlToText(match[2]);
+      if (!body) continue;
+      const value = claimNo !== null ? `${claimNo}. ${body}` : body;
+      const dedupeKey = value.replace(/\s+/g, " ").trim();
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      claimItems.push(value);
+    }
+
+    if (claimItems.length === 0) {
+      claimItems.push(...splitNumberedClaimChunks(htmlToText(markup)));
+    }
+
+    const claimNodeCount = claimItems.length;
+    const claimCount =
+      parsedCount !== null
+        ? parsedCount
+        : claimNodeCount > 0
+          ? claimNodeCount
+          : null;
+
+    return {
+      claimsText: cleanText(claimItems.join("\n\n")),
+      claimNodeCount,
+      claimCount,
+    };
+  };
+
   const extractClaimsStructured = () => {
     const claimRoot = findClaimRoot();
     if (!claimRoot) {
@@ -597,15 +858,20 @@ async function extractPatentSectionsFromPage(
 
   while (Date.now() < deadline) {
     const structured = extractClaimsStructured();
+    const markupFallback =
+      structured.claimNodeCount > 0 ? null : extractClaimsFromMarkupFallback();
     const rawClaimsFallback =
       firstNonEmpty(claimSectionSelectors) || mergeNonEmpty(claimBlockSelectors);
     const rawDescription =
       firstNonEmpty(descSectionSelectors) || mergeNonEmpty(descBlockSelectors);
 
     const cleanedClaims = stripClaimHeadingLines(
-      structured.claimsText || rawClaimsFallback
+      structured.claimsText || markupFallback?.claimsText || rawClaimsFallback
     );
-    const claimNodeCount = structured.claimNodeCount;
+    const claimNodeCount =
+      structured.claimNodeCount ||
+      markupFallback?.claimNodeCount ||
+      countNumberedClaims(cleanedClaims);
 
     if (claimNodeCount !== previousNodeCount) {
       previousNodeCount = claimNodeCount;
@@ -616,6 +882,7 @@ async function extractPatentSectionsFromPage(
     description = rawDescription;
     claimCount =
       structured.claimCount ??
+      markupFallback?.claimCount ??
       parseClaimCountFromText(cleanedClaims) ??
       (claimNodeCount > 0 ? claimNodeCount : null);
 
@@ -642,8 +909,14 @@ async function extractPatentSectionsFromPage(
       consecutiveReady >= 3;
     if (claimsReady) {
       const settledStructured = extractClaimsStructured();
+      const settledFallback =
+        settledStructured.claimNodeCount > 0
+          ? null
+          : extractClaimsFromMarkupFallback();
       const settledClaims = stripClaimHeadingLines(
-        settledStructured.claimsText || cleanedClaims
+        settledStructured.claimsText ||
+          settledFallback?.claimsText ||
+          cleanedClaims
       );
 
       claims = settledClaims;
@@ -651,6 +924,7 @@ async function extractPatentSectionsFromPage(
         firstNonEmpty(descSectionSelectors) || mergeNonEmpty(descBlockSelectors);
       claimCount =
         settledStructured.claimCount ??
+        settledFallback?.claimCount ??
         claimCount ??
         parseClaimCountFromText(settledClaims) ??
         (settledStructured.claimNodeCount > 0
@@ -665,6 +939,15 @@ async function extractPatentSectionsFromPage(
     }
 
     await sleep(350);
+  }
+
+  if (!claims) {
+    const finalFallback = extractClaimsFromMarkupFallback();
+    if (finalFallback.claimsText) {
+      claims = stripClaimHeadingLines(finalFallback.claimsText);
+      claimCount = claimCount ?? finalFallback.claimCount;
+      claimsReady = true;
+    }
   }
 
   const title =

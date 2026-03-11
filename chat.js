@@ -797,6 +797,12 @@ function normalizePublicationNumber(value) {
 }
 
 function splitClaims(rawClaims) {
+  const stripLeadingClaimNumber = (text) => {
+    return String(text || "")
+      .replace(/^\s*\d+\.\s+/, "")
+      .trim();
+  };
+
   const stripClaimHeadingLines = (text) => {
     const lines = String(text || "")
       .replace(/\r\n/g, "\n")
@@ -856,7 +862,8 @@ function splitClaims(rawClaims) {
       const start = anchorsToUse[i].index;
       const end = i + 1 < anchorsToUse.length ? anchorsToUse[i + 1].index : source.length;
       const chunk = source.slice(start, end).trim();
-      if (chunk) numberedClaims.push(chunk);
+      const normalizedChunk = stripLeadingClaimNumber(chunk);
+      if (normalizedChunk) numberedClaims.push(normalizedChunk);
     }
 
     if (numberedClaims.length > 0) {
@@ -888,15 +895,23 @@ function splitClaims(rawClaims) {
     fallbackClaims.push(current.join("\n").trim());
   }
 
+  const normalizedFallbackClaims = fallbackClaims
+    .map((claimText) => stripLeadingClaimNumber(claimText))
+    .filter(Boolean);
+
   if (fallbackClaims.length <= 1) {
     const blocks = source
       .split(/\n{2,}/)
       .map((block) => block.trim())
       .filter(Boolean);
-    if (blocks.length > 1) return blocks;
+    if (blocks.length > 1) {
+      return blocks
+        .map((claimText) => stripLeadingClaimNumber(claimText))
+        .filter(Boolean);
+    }
   }
 
-  return fallbackClaims.filter(Boolean);
+  return normalizedFallbackClaims;
 }
 
 function parseNonNegativeInteger(value) {
@@ -1146,7 +1161,10 @@ function applyPersistedSession(session) {
       : null;
   state.summaryMarkdown = String(session.summaryMarkdown || "");
   state.claimItems = Array.isArray(session.claimItems)
-    ? session.claimItems.map((item) => String(item || "")).filter(Boolean)
+    ? session.claimItems
+        .map((item) => String(item || ""))
+        .map((item) => item.replace(/^\s*\d+\.\s+/, "").trim())
+        .filter(Boolean)
     : splitClaims(state.patentData?.claims || "");
   state.claimAnalyses = sanitizeClaimAnalysesMap(session.claimAnalyses);
   state.followupHistory = sanitizeFollowupHistory(session.followupHistory);
