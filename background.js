@@ -465,9 +465,6 @@ async function collectPatentSections(publicationNumber, returnFocusTabId = null)
     if (!claims && !description) {
       throw new Error("Claims 또는 Description을 찾지 못했습니다.");
     }
-    if (!claims && !extracted.claimsReady) {
-      throw new Error("청구항 로딩 완료를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.");
-    }
 
     return {
       ...extracted,
