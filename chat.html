@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KR Patent Workbench</title>
+    <link rel="stylesheet" href="chat.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="titleWrap">
+          <h1>KR Patent Workbench</h1>
+          <p id="modelInfo"></p>
+        </div>
+        <button id="openSettingsBtn" class="ghostButton">설정</button>
+      </header>
+
+      <section id="keyNotice" class="notice hidden">
+        API Key가 없습니다. 우측 상단 설정 버튼에서 API Key를 저장해 주세요.
+      </section>
+
+      <form id="patentForm" class="queryCard">
+        <label for="publicationInput">공개번호 입력</label>
+        <div class="queryRow">
+          <input
+            id="publicationInput"
+            type="text"
+            placeholder="예: 20240123456"
+            autocomplete="off"
+          />
+          <button id="summarizeBtn" type="submit">불러오기</button>
+        </div>
+        <p class="hint">
+          형식은 숫자만 입력하면 됩니다. <code>KR</code>, <code>A</code>는 자동
+          처리됩니다.
+        </p>
+      </form>
+
+      <section id="statusBar" class="statusBar" aria-live="polite">
+        대기 중
+      </section>
+
+      <section class="tabsContainer">
+        <nav class="tabs" role="tablist" aria-label="특허 분석 탭">
+          <button
+            id="tabBtn-summary"
+            class="tabButton active"
+            type="button"
+            data-tab="summary"
+            role="tab"
+            aria-selected="true"
+          >
+            요약
+          </button>
+          <button
+            id="tabBtn-claims"
+            class="tabButton"
+            type="button"
+            data-tab="claims"
+            role="tab"
+            aria-selected="false"
+          >
+            청구항
+          </button>
+          <button
+            id="tabBtn-description"
+            class="tabButton"
+            type="button"
+            data-tab="description"
+            role="tab"
+            aria-selected="false"
+          >
+            발명의 설명
+          </button>
+          <button
+            id="tabBtn-citation"
+            class="tabButton"
+            type="button"
+            data-tab="citation"
+            role="tab"
+            aria-selected="false"
+          >
+            프롬프트
+          </button>
+        </nav>
+
+        <div class="tabPanels">
+          <section
+            id="tab-summary"
+            class="tabPanel active"
+            role="tabpanel"
+            aria-labelledby="tabBtn-summary"
+          >
+            <article class="panel">
+              <div class="panelHeadRow">
+                <h2>발명 전체 요약</h2>
+                <button id="generateSummaryBtn" type="button">요약 생성</button>
+              </div>
+              <p id="summaryMeta" class="metaText">아직 조회된 특허가 없습니다.</p>
+              <div id="summaryMarkdown" class="markdownView empty">
+                아직 생성된 요약이 없습니다.
+              </div>
+            </article>
+
+            <article class="panel">
+              <h3>추가 질문</h3>
+              <div id="followupChatLog" class="chatLog"></div>
+              <form id="followupForm" class="followupForm">
+                <input
+                  id="followupInput"
+                  type="text"
+                  placeholder="요약 결과에 대해 추가 질문을 입력하세요."
+                />
+                <button id="followupSendBtn" type="submit">질문</button>
+              </form>
+            </article>
+          </section>
+
+          <section
+            id="tab-claims"
+            class="tabPanel"
+            role="tabpanel"
+            aria-labelledby="tabBtn-claims"
+            hidden
+          >
+            <article class="panel">
+              <div class="panelHeadRow">
+                <div class="panelTitleWrap">
+                  <h2>청구항 카드</h2>
+                  <span id="claimsCountText" class="claimsCountText">청구항 개수: -</span>
+                </div>
+                <button id="analyzeAllClaimsBtn" type="button">
+                  구성분석(전체)
+                </button>
+              </div>
+              <div id="claimsCards" class="claimsCards"></div>
+            </article>
+          </section>
+
+          <section
+            id="tab-description"
+            class="tabPanel"
+            role="tabpanel"
+            aria-labelledby="tabBtn-description"
+            hidden
+          >
+            <div class="descriptionColumns">
+              <article class="panel">
+                <h2>청구항</h2>
+                <div id="descriptionClaimsColumn" class="claimsList empty">
+                  아직 청구항이 없습니다.
+                </div>
+              </article>
+              <article class="panel">
+                <h2>발명의 설명</h2>
+                <pre id="descriptionRaw" class="rawBlock empty">아직 발명의 설명이 없습니다.</pre>
+              </article>
+            </div>
+          </section>
+
+          <section
+            id="tab-citation"
+            class="tabPanel"
+            role="tabpanel"
+            aria-labelledby="tabBtn-citation"
+            hidden
+          >
+            <article class="panel">
+              <h2>프롬프트</h2>
+              <p class="metaText">
+                각 카드에서 프롬프트를 생성하면 클립보드에 복사됩니다. 미리보기를 누르면 전체 프롬프트를 볼 수 있습니다.
+              </p>
+
+              <label class="blockLabel">검색 기반 선택</label>
+              <div class="selectGroup">
+                <label class="checkLine">
+                  <input
+                    id="citationSourceSummary"
+                    type="radio"
+                    name="citationSourceMode"
+                    value="summary"
+                    checked
+                  />
+                  발명의 요약 사용
+                </label>
+                <label class="checkLine">
+                  <input
+                    id="citationSourceDescription"
+                    type="radio"
+                    name="citationSourceMode"
+                    value="description"
+                  />
+                  발명의 설명 사용
+                </label>
+              </div>
+
+              <div class="promptGrid">
+                <article class="promptCard">
+                  <div class="promptCardHead">
+                    <h3>1. 인용발명 검색 프롬프트</h3>
+                    <button id="generateCitationSearchPromptBtn" type="button">
+                      생성 및 복사
+                    </button>
+                  </div>
+                  <label class="promptFieldLabel" for="citationCutoffDateInput">
+                    특허판단 기준일
+                  </label>
+                  <input
+                    id="citationCutoffDateInput"
+                    class="promptFieldInput"
+                    type="date"
+                  />
+                  <div
+                    id="citationSearchPromptPreview"
+                    class="promptPreview empty"
+                    role="button"
+                    tabindex="0"
+                  >
+                    아직 생성된 프롬프트가 없습니다.
+                  </div>
+                </article>
+
+                <article class="promptCard">
+                  <div class="promptCardHead">
+                    <h3>2. 진보성 판단 프롬프트</h3>
+                    <button id="generateInventiveStepPromptBtn" type="button">
+                      생성 및 복사
+                    </button>
+                  </div>
+                  <label
+                    class="promptFieldLabel"
+                    for="inventiveStepCitationNumbersInput"
+                  >
+                    검토할 인용발명 번호
+                  </label>
+                  <input
+                    id="inventiveStepCitationNumbersInput"
+                    class="promptFieldInput"
+                    type="text"
+                    placeholder="예: 1, 2, 5"
+                  />
+                  <div
+                    id="inventiveStepPromptPreview"
+                    class="promptPreview empty"
+                    role="button"
+                    tabindex="0"
+                  >
+                    아직 생성된 프롬프트가 없습니다.
+                  </div>
+                </article>
+
+                <article class="promptCard">
+                  <div class="promptCardHead">
+                    <h3>3. 증거찾기 프롬프트</h3>
+                    <button id="generateEvidencePromptBtn" type="button">
+                      생성 및 복사
+                    </button>
+                  </div>
+                  <div class="promptFieldRow">
+                    <div>
+                      <label class="promptFieldLabel" for="evidenceClaimNumberInput">
+                        증거를 찾을 청구항 번호
+                      </label>
+                      <input
+                        id="evidenceClaimNumberInput"
+                        class="promptFieldInput"
+                        type="number"
+                        min="1"
+                        step="1"
+                        placeholder="예: 1"
+                      />
+                    </div>
+                    <div>
+                      <label
+                        class="promptFieldLabel"
+                        for="evidenceCitationNumbersInput"
+                      >
+                        검토할 인용발명 번호
+                      </label>
+                      <input
+                        id="evidenceCitationNumbersInput"
+                        class="promptFieldInput"
+                        type="text"
+                        placeholder="비우면 2번 카드 번호 사용"
+                      />
+                    </div>
+                  </div>
+                  <div
+                    id="evidencePromptPreview"
+                    class="promptPreview empty"
+                    role="button"
+                    tabindex="0"
+                  >
+                    아직 생성된 프롬프트가 없습니다.
+                  </div>
+                </article>
+
+                <article class="promptCard">
+                  <div class="promptCardHead">
+                    <h3>4. 논문 인용문구 정리 프롬프트</h3>
+                    <button id="generateCitationFormatPromptBtn" type="button">
+                      생성 및 복사
+                    </button>
+                  </div>
+                  <label
+                    class="promptFieldLabel"
+                    for="citationFormatNumbersInput"
+                  >
+                    인용발명 번호
+                  </label>
+                  <input
+                    id="citationFormatNumbersInput"
+                    class="promptFieldInput"
+                    type="text"
+                    placeholder="예: 2, 4"
+                  />
+                  <div
+                    id="citationFormatPromptPreview"
+                    class="promptPreview empty"
+                    role="button"
+                    tabindex="0"
+                  >
+                    아직 생성된 프롬프트가 없습니다.
+                  </div>
+                </article>
+              </div>
+            </article>
+          </section>
+        </div>
+      </section>
+    </div>
+
+    <div id="settingsModal" class="modalBackdrop hidden" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <div class="modalCard">
+        <div class="modalHead">
+          <h2 id="settingsTitle">설정</h2>
+          <button id="closeSettingsBtn" class="ghostButton" type="button">닫기</button>
+        </div>
+
+        <div class="field">
+          <label for="settingsApiKeyInput">API Key</label>
+          <input
+            id="settingsApiKeyInput"
+            type="password"
+            autocomplete="off"
+            placeholder="AIza..."
+          />
+        </div>
+
+        <div class="field">
+          <label for="settingsModelSelect">모델 선택</label>
+          <div class="modalRow">
+            <select id="settingsModelSelect"></select>
+            <button id="loadSettingsModelsBtn" type="button">목록 불러오기</button>
+          </div>
+        </div>
+
+        <div class="modalActions">
+          <button id="saveSettingsBtn" type="button">저장</button>
+          <button id="clearSettingsApiKeyBtn" type="button" class="secondaryButton">API Key 삭제</button>
+        </div>
+        <p id="settingsStatus" class="modalStatus"></p>
+      </div>
+    </div>
+
+    <div id="promptModal" class="modalBackdrop hidden" role="dialog" aria-modal="true" aria-labelledby="promptModalTitle">
+      <div class="modalCard">
+        <div class="modalHead">
+          <h2 id="promptModalTitle">프롬프트</h2>
+          <button id="closePromptModalBtn" class="ghostButton" type="button">닫기</button>
+        </div>
+        <pre id="promptModalBody" class="promptModalBody"></pre>
+        <div class="modalActions">
+          <button id="copyPromptModalBtn" type="button">복사</button>
+        </div>
+      </div>
+    </div>
+    <script src="chat.js"></script>
+  </body>
+</html>

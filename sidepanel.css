@@ -1,0 +1,167 @@
+:root {
+  --line: #dbe5f1;
+  --muted: #64748b;
+  --bg: #f8fafc;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
+  color: #0f172a;
+  background: #ffffff;
+}
+
+.app {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+}
+
+.topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.topbarActions {
+  display: flex;
+  gap: 6px;
+}
+
+button {
+  border: 0;
+  border-radius: 8px;
+  background: #1d4ed8;
+  color: #ffffff;
+  font-weight: 600;
+  font-size: 12px;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ghostButton {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.statusBar {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  padding: 9px 10px;
+  font-size: 13px;
+}
+
+.statusBar.error {
+  border-color: #fecaca;
+  background: #fff1f2;
+  color: #b91c1c;
+}
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  background: #ffffff;
+}
+
+.card h2 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+.metaText {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.blockLabel {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+select {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+  background: #ffffff;
+}
+
+.claimContent {
+  margin: 8px 0 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  padding: 10px;
+  min-height: 128px;
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  line-height: 1.5;
+  font-size: 13px;
+}
+
+.claimContent.empty {
+  color: var(--muted);
+}
+
+.promptGrid {
+  margin-top: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.promptCard {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 8px;
+}
+
+.promptCardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.promptCardHead h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.promptPreview {
+  margin-top: 7px;
+  border: 1px solid #dbe5f1;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 8px;
+  min-height: 56px;
+  white-space: pre-wrap;
+  line-height: 1.4;
+  font-size: 12px;
+}
+
+.promptPreview.empty {
+  color: var(--muted);
+}

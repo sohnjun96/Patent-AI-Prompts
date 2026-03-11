@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI Studio 설정</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: "Segoe UI", "Noto Sans KR", sans-serif;
+      }
+
+      body {
+        margin: 0;
+        background: #f4f6fb;
+      }
+
+      .container {
+        max-width: 760px;
+        margin: 48px auto;
+        background: #fff;
+        border-radius: 16px;
+        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+        padding: 24px;
+      }
+
+      h1 {
+        margin-top: 0;
+        font-size: 24px;
+      }
+
+      p {
+        margin: 8px 0 20px;
+        color: #475569;
+      }
+
+      .field {
+        margin-bottom: 16px;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        align-items: center;
+      }
+
+      label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 8px;
+      }
+
+      input,
+      select {
+        width: 100%;
+        box-sizing: border-box;
+        border: 1px solid #cbd5e1;
+        border-radius: 10px;
+        font-size: 14px;
+        padding: 10px 12px;
+        background: #fff;
+      }
+
+      .actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      button {
+        border: 0;
+        border-radius: 10px;
+        padding: 10px 14px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      #saveBtn {
+        background: #1d4ed8;
+        color: white;
+      }
+
+      #clearBtn {
+        background: #e2e8f0;
+        color: #0f172a;
+      }
+
+      #loadModelsBtn {
+        background: #e0e7ff;
+        color: #1e3a8a;
+        white-space: nowrap;
+      }
+
+      #status {
+        margin-top: 14px;
+        min-height: 20px;
+        color: #0f766e;
+      }
+
+      .hint {
+        color: #64748b;
+        font-size: 13px;
+      }
+
+      code {
+        background: #f1f5f9;
+        padding: 2px 6px;
+        border-radius: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="container">
+      <h1>Google AI Studio 연결 설정</h1>
+      <p>API Key를 저장하고 모델 목록을 불러와 선택할 수 있습니다.</p>
+
+      <div class="field">
+        <label for="apiKey">API Key</label>
+        <input
+          id="apiKey"
+          type="password"
+          autocomplete="off"
+          placeholder="AIza..."
+        />
+      </div>
+
+      <div class="field">
+        <label for="modelSelect">모델 선택</label>
+        <div class="row">
+          <select id="modelSelect"></select>
+          <button id="loadModelsBtn" type="button">목록 불러오기</button>
+        </div>
+        <div class="hint">
+          목록은 <code>models:list</code> API로 조회합니다. 키 변경 후 다시
+          불러오세요.
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="saveBtn">저장</button>
+        <button id="clearBtn" type="button">API Key 삭제</button>
+      </div>
+      <div id="status"></div>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>

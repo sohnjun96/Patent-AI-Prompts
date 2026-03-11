@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "KR Patent Summarizer",
+  "version": "0.1.0",
+  "description": "Open a KR patent page, extract Claims/Description, then summarize with Gemini.",
+  "permissions": [
+    "storage",
+    "tabs",
+    "scripting",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "https://generativelanguage.googleapis.com/*",
+    "https://patents.google.com/*",
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_title": "Open Patent Summarizer"
+  },
+  "options_page": "options.html"
+}
