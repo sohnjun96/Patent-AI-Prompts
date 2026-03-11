@@ -2,7 +2,9 @@ const PATENT_WAIT_MS = 40_000;
 const EXTRACTION_WAIT_MS = 35_000;
 const SECTION_CHAR_LIMIT = 22_000;
 const CLAIM_STABILIZE_MS = 600;
-const EXTRACTION_MAX_ATTEMPTS = 2;
+const EXTRACTION_MAX_ATTEMPTS = 8;
+const EXTRACTION_RETRY_INTERVAL_MS = 1_200;
+const EXTRACTION_RELOAD_EVERY = 3;
 const CHATGPT_PROMPT_SELECTOR = "#prompt-textarea";
 const CHATGPT_SUBMIT_SELECTOR = "#composer-submit-button";
 
@@ -369,13 +371,20 @@ function activateTabQuietly(tabId) {
   });
 }
 
-function runExtraction(tabId) {
+function runExtraction(tabId, options = {}) {
+  const waitMs = Number.isFinite(options.waitMs)
+    ? Math.max(800, Math.trunc(options.waitMs))
+    : EXTRACTION_WAIT_MS;
+  const stabilizeMs = Number.isFinite(options.stabilizeMs)
+    ? Math.max(250, Math.trunc(options.stabilizeMs))
+    : CLAIM_STABILIZE_MS;
+
   return new Promise((resolve, reject) => {
     chrome.scripting.executeScript(
       {
         target: { tabId },
         func: extractPatentSectionsFromPage,
-        args: [SECTION_CHAR_LIMIT, EXTRACTION_WAIT_MS, CLAIM_STABILIZE_MS],
+        args: [SECTION_CHAR_LIMIT, waitMs, stabilizeMs],
       },
       (results) => {
         if (chrome.runtime.lastError) {
@@ -402,22 +411,36 @@ function reloadTab(tabId) {
 
 async function runExtractionWithRetry(tabId, maxAttempts = EXTRACTION_MAX_ATTEMPTS) {
   let lastExtracted = null;
+  const attemptWaitPlan = [2_500, 3_500, 5_000, 7_000, 10_000, 12_000, 15_000, 18_000];
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    lastExtracted = await runExtraction(tabId);
+    const waitMs =
+      attemptWaitPlan[Math.min(attempt - 1, attemptWaitPlan.length - 1)] ||
+      EXTRACTION_WAIT_MS;
+    lastExtracted = await runExtraction(tabId, {
+      waitMs,
+      stabilizeMs: CLAIM_STABILIZE_MS,
+    });
     if (!lastExtracted) {
       continue;
     }
 
     const hasClaims = Boolean(String(lastExtracted.claims || "").trim());
     const hasDescription = Boolean(String(lastExtracted.description || "").trim());
-    if (hasClaims || hasDescription) {
+    const claimsReady = Boolean(lastExtracted.claimsReady);
+    if (hasClaims || hasDescription || claimsReady) {
       return lastExtracted;
     }
 
     if (attempt < maxAttempts) {
-      await reloadTab(tabId);
-      await waitForTabComplete(tabId, PATENT_WAIT_MS);
+      if (attempt % EXTRACTION_RELOAD_EVERY === 0) {
+        await reloadTab(tabId);
+        await waitForTabComplete(tabId, PATENT_WAIT_MS);
+      } else {
+        await new Promise((resolve) => {
+          setTimeout(resolve, EXTRACTION_RETRY_INTERVAL_MS);
+        });
+      }
     }
   }
 
