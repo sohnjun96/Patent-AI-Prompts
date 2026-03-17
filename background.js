@@ -428,7 +428,7 @@ async function runExtractionWithRetry(tabId, maxAttempts = EXTRACTION_MAX_ATTEMP
     const hasClaims = Boolean(String(lastExtracted.claims || "").trim());
     const hasDescription = Boolean(String(lastExtracted.description || "").trim());
     const claimsReady = Boolean(lastExtracted.claimsReady);
-    if (hasClaims || hasDescription || claimsReady) {
+    if (hasClaims || claimsReady || (attempt === maxAttempts && hasDescription)) {
       return lastExtracted;
     }
 
