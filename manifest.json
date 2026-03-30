@@ -12,6 +12,8 @@
   "host_permissions": [
     "https://generativelanguage.googleapis.com/*",
     "https://patents.google.com/*",
+    "http://plus.kipris.or.kr/*",
+    "https://plus.kipris.or.kr/*",
     "https://chatgpt.com/*",
     "https://chat.openai.com/*"
   ],

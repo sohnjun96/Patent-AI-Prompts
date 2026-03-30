@@ -86,15 +86,17 @@ body {
 
 .queryRow {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 150px 1fr auto;
   gap: 8px;
 }
 
+.queryRow select,
 .queryRow input {
   border: 1px solid #cbd5e1;
   border-radius: 10px;
   padding: 10px 12px;
   font: inherit;
+  background: #fff;
 }
 
 .queryRow button {
@@ -316,6 +318,10 @@ body {
 .highlightGroupsEditor.empty {
   color: var(--muted);
   font-size: 13px;
+}
+
+.highlightPanel > .highlightGroupsEditor {
+  display: none;
 }
 
 .highlightGroupCard {
@@ -834,6 +840,23 @@ code {
   gap: 12px;
 }
 
+.highlightEditorModalCard {
+  width: min(920px, 100%);
+}
+
+.highlightEditorBody {
+  border: 1px solid #dbe5f1;
+  border-radius: 10px;
+  background: #f8fafc;
+  padding: 10px;
+  max-height: 62vh;
+  overflow: auto;
+}
+
+.highlightEditorBody .highlightGroupsEditor {
+  margin-top: 0;
+}
+
 .modalHead {
   display: flex;
   align-items: center;
@@ -850,6 +873,12 @@ code {
   display: block;
   margin-bottom: 6px;
   font-weight: 600;
+}
+
+.fieldHint {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .field input,
@@ -910,6 +939,119 @@ code {
   font-size: 13px;
 }
 
+.amendmentHistoryList {
+  display: grid;
+  gap: 10px;
+}
+
+.amendmentHistoryList.empty {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.amendmentControlsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  max-width: 760px;
+}
+
+.amendmentGroupRow {
+  margin-top: 2px;
+  display: grid;
+  gap: 6px;
+}
+
+.amendmentCard {
+  border: 1px solid #dbe5f1;
+  border-radius: 10px;
+  background: #f8fafc;
+  padding: 10px;
+}
+
+.amendmentCardHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.amendmentCardTitle {
+  margin: 0;
+  font-size: 15px;
+  color: #0f172a;
+}
+
+.amendmentCardIndex {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.amendmentMetaRow {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.amendmentMetaChip {
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #fff;
+  color: #334155;
+  font-size: 12px;
+  padding: 3px 9px;
+}
+
+.amendmentMetaChip.added {
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.amendmentMetaChip.deleted {
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.amendmentLegend {
+  margin-top: 8px;
+  margin-bottom: 0;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.amendmentDiff {
+  margin-top: 8px;
+  border: 1px solid #dbe5f1;
+  border-radius: 8px;
+  background: #fff;
+  padding: 9px;
+}
+
+.amendmentDiffText {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 18px;
+  line-height: 1.45;
+}
+
+.amendmentDiffText.empty {
+  color: var(--muted);
+}
+
+.amendAdded {
+  color: #1d4ed8;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+}
+
+.amendRemoved {
+  color: #dc2626;
+  text-decoration: line-through;
+}
+
 @media (max-width: 820px) {
   .app {
     padding: 12px;
@@ -945,5 +1087,14 @@ code {
 
   .modalActions {
     flex-direction: column;
+  }
+
+  .amendmentCardHead {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .amendmentControlsGrid {
+    grid-template-columns: 1fr;
   }
 }

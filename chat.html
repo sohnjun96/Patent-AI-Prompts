@@ -23,6 +23,10 @@
       <form id="patentForm" class="queryCard">
         <label for="publicationInput">공개번호 입력</label>
         <div class="queryRow">
+          <select id="numberTypeSelect" aria-label="번호 유형 선택">
+            <option value="publication">공개번호</option>
+            <option value="application">출원번호</option>
+          </select>
           <input
             id="publicationInput"
             type="text"
@@ -72,6 +76,16 @@
             aria-selected="false"
           >
             발명의 설명
+          </button>
+          <button
+            id="tabBtn-amendment"
+            class="tabButton"
+            type="button"
+            data-tab="amendment"
+            role="tab"
+            aria-selected="false"
+          >
+            Claim Changes
           </button>
           <button
             id="tabBtn-citation"
@@ -153,7 +167,7 @@
                   API 추출 또는 수동 추가로 용어군을 만들어 주세요.
                 </div>
                 <div class="highlightPanelActions">
-                  <button id="addHighlightGroupBtn" type="button" class="highlightAddBtn">
+                  <button id="openHighlightEditorBtn" type="button" class="highlightAddBtn">
                     용어군 추가
                   </button>
                 </div>
@@ -181,6 +195,51 @@
                 <pre id="descriptionRaw" class="rawBlock empty">아직 발명의 설명이 없습니다.</pre>
               </article>
             </div>
+          </section>
+
+          <section
+            id="tab-amendment"
+            class="tabPanel"
+            role="tabpanel"
+            aria-labelledby="tabBtn-amendment"
+            hidden
+          >
+            <article class="panel">
+              <div class="panelHeadRow">
+                <div class="panelTitleWrap">
+                  <h2>Claim Amendment History</h2>
+                  <span id="amendmentHistoryMeta" class="claimsCountText"
+                    >Application No: -</span
+                  >
+                </div>
+                <button id="loadAmendmentHistoryBtn" type="button">
+                  Load History
+                </button>
+              </div>
+              <div class="amendmentControlsGrid">
+                <div class="amendmentGroupRow">
+                  <label class="blockLabel" for="amendmentGroupSelect">Receipt Group</label>
+                  <select id="amendmentGroupSelect" class="promptFieldInput" disabled>
+                    <option value="">No groups</option>
+                  </select>
+                </div>
+                <div class="amendmentGroupRow">
+                  <label class="blockLabel" for="amendmentViewModeSelect">View Mode</label>
+                  <select id="amendmentViewModeSelect" class="promptFieldInput">
+                    <option value="modified">수정 보기</option>
+                    <option value="deleted">삭제된 부분만 보기</option>
+                    <option value="added">추가된 부분만 보기</option>
+                    <option value="final">최종본만 보기</option>
+                  </select>
+                </div>
+              </div>
+              <p id="amendmentHistoryStatus" class="metaText">
+                Load amendment history to compare before/after claim text.
+              </p>
+              <div id="amendmentHistoryList" class="amendmentHistoryList empty">
+                No amendment history loaded yet.
+              </div>
+            </article>
           </section>
 
           <section
@@ -373,6 +432,17 @@
         </div>
 
         <div class="field">
+          <label for="settingsKiprisApiKeyInput">KIPRIS API Key (선택)</label>
+          <input
+            id="settingsKiprisApiKeyInput"
+            type="password"
+            autocomplete="off"
+            placeholder="KIPRIS Access Key"
+          />
+          <p class="fieldHint">미등록 시 공개번호로만 조회할 수 있습니다.</p>
+        </div>
+
+        <div class="field">
           <label for="settingsModelSelect">모델 선택</label>
           <div class="modalRow">
             <select id="settingsModelSelect"></select>
@@ -397,6 +467,18 @@
         <pre id="promptModalBody" class="promptModalBody"></pre>
         <div class="modalActions">
           <button id="copyPromptModalBtn" type="button">복사</button>
+        </div>
+      </div>
+    </div>
+    <div id="highlightEditorModal" class="modalBackdrop hidden" role="dialog" aria-modal="true" aria-labelledby="highlightEditorTitle">
+      <div class="modalCard highlightEditorModalCard">
+        <div class="modalHead">
+          <h2 id="highlightEditorTitle">용어 하이라이트 편집</h2>
+          <button id="closeHighlightEditorBtn" class="ghostButton" type="button">닫기</button>
+        </div>
+        <div id="highlightEditorMount" class="highlightEditorBody"></div>
+        <div class="modalActions">
+          <button id="addHighlightGroupBtn" type="button" class="secondaryButton">용어군 추가</button>
         </div>
       </div>
     </div>

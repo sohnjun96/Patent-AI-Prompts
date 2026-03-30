@@ -2,6 +2,7 @@ const modelInfoEl = document.getElementById("modelInfo");
 const keyNoticeEl = document.getElementById("keyNotice");
 const patentFormEl = document.getElementById("patentForm");
 const publicationInputEl = document.getElementById("publicationInput");
+const numberTypeSelectEl = document.getElementById("numberTypeSelect");
 const summarizeBtnEl = document.getElementById("summarizeBtn");
 const openSettingsBtnEl = document.getElementById("openSettingsBtn");
 const statusBarEl = document.getElementById("statusBar");
@@ -21,6 +22,7 @@ const analyzeAllClaimsBtnEl = document.getElementById("analyzeAllClaimsBtn");
 const claimsCountTextEl = document.getElementById("claimsCountText");
 const claimsCardsEl = document.getElementById("claimsCards");
 const generateHighlightsBtnEl = document.getElementById("generateHighlightsBtn");
+const openHighlightEditorBtnEl = document.getElementById("openHighlightEditorBtn");
 const highlightMetaEl = document.getElementById("highlightMeta");
 const highlightLegendEl = document.getElementById("highlightLegend");
 const highlightGroupsEditorEl = document.getElementById("highlightGroupsEditor");
@@ -28,6 +30,12 @@ const addHighlightGroupBtnEl = document.getElementById("addHighlightGroupBtn");
 
 const descriptionClaimsColumnEl = document.getElementById("descriptionClaimsColumn");
 const descriptionRawEl = document.getElementById("descriptionRaw");
+const loadAmendmentHistoryBtnEl = document.getElementById("loadAmendmentHistoryBtn");
+const amendmentGroupSelectEl = document.getElementById("amendmentGroupSelect");
+const amendmentViewModeSelectEl = document.getElementById("amendmentViewModeSelect");
+const amendmentHistoryMetaEl = document.getElementById("amendmentHistoryMeta");
+const amendmentHistoryStatusEl = document.getElementById("amendmentHistoryStatus");
+const amendmentHistoryListEl = document.getElementById("amendmentHistoryList");
 
 const citationSourceSummaryEl = document.getElementById("citationSourceSummary");
 const citationSourceDescriptionEl = document.getElementById(
@@ -72,10 +80,16 @@ const promptModalTitleEl = document.getElementById("promptModalTitle");
 const promptModalBodyEl = document.getElementById("promptModalBody");
 const closePromptModalBtnEl = document.getElementById("closePromptModalBtn");
 const copyPromptModalBtnEl = document.getElementById("copyPromptModalBtn");
+const highlightEditorModalEl = document.getElementById("highlightEditorModal");
+const closeHighlightEditorBtnEl = document.getElementById("closeHighlightEditorBtn");
+const highlightEditorMountEl = document.getElementById("highlightEditorMount");
 
 const settingsModalEl = document.getElementById("settingsModal");
 const closeSettingsBtnEl = document.getElementById("closeSettingsBtn");
 const settingsApiKeyInputEl = document.getElementById("settingsApiKeyInput");
+const settingsKiprisApiKeyInputEl = document.getElementById(
+  "settingsKiprisApiKeyInput"
+);
 const settingsModelSelectEl = document.getElementById("settingsModelSelect");
 const loadSettingsModelsBtnEl = document.getElementById("loadSettingsModelsBtn");
 const saveSettingsBtnEl = document.getElementById("saveSettingsBtn");
@@ -84,11 +98,18 @@ const settingsStatusEl = document.getElementById("settingsStatus");
 
 const DEFAULT_MODEL = "gemini-2.0-flash";
 const API_BASE = "https://generativelanguage.googleapis.com/v1beta";
+const NUMBER_TYPE_PUBLICATION = "publication";
+const NUMBER_TYPE_APPLICATION = "application";
+const AMENDMENT_VIEW_MODE_MODIFIED = "modified";
+const AMENDMENT_VIEW_MODE_DELETED = "deleted";
+const AMENDMENT_VIEW_MODE_ADDED = "added";
+const AMENDMENT_VIEW_MODE_FINAL = "final";
 
 const EMPTY_SUMMARY = "아직 생성된 요약이 없습니다.";
 const EMPTY_CLAIMS = "아직 청구항이 없습니다.";
 const EMPTY_DESCRIPTION = "아직 발명의 설명이 없습니다.";
 const EMPTY_PROMPT_PREVIEW = "아직 생성된 프롬프트가 없습니다.";
+const EMPTY_AMENDMENT_HISTORY = "No amendment history loaded yet.";
 const SESSION_STORAGE_KEY = "patentWorkbenchSessionV1";
 
 const PROMPT_PATHS = {
@@ -104,6 +125,7 @@ const PROMPT_PATHS = {
 
 const state = {
   apiKey: "",
+  kiprisApiKey: "",
   model: DEFAULT_MODEL,
   pending: false,
   activeTab: "summary",
@@ -113,6 +135,10 @@ const state = {
   claimItems: [],
   claimAnalyses: {},
   highlightGroups: [],
+  amendmentHistoryItems: null,
+  amendmentHistoryApplicationNumber: "",
+  amendmentSelectedGroupKey: "",
+  amendmentViewMode: AMENDMENT_VIEW_MODE_MODIFIED,
   followupHistory: [],
   promptOutputs: createEmptyPromptOutputs(),
   settingModels: [],
@@ -125,6 +151,18 @@ let promptModalState = {
   title: "",
   text: "",
 };
+
+if (
+  highlightEditorMountEl &&
+  highlightGroupsEditorEl &&
+  highlightGroupsEditorEl.parentElement !== highlightEditorMountEl
+) {
+  highlightEditorMountEl.appendChild(highlightGroupsEditorEl);
+}
+
+if (openHighlightEditorBtnEl) {
+  openHighlightEditorBtnEl.textContent = "용어군 편집";
+}
 
 const HIGHLIGHT_COLOR_PALETTE = [
   "#f59e0b",
@@ -190,6 +228,10 @@ function buildPersistedSession() {
     claimItems: state.claimItems,
     claimAnalyses: state.claimAnalyses,
     highlightGroups: state.highlightGroups,
+    amendmentHistoryItems: state.amendmentHistoryItems,
+    amendmentHistoryApplicationNumber: state.amendmentHistoryApplicationNumber,
+    amendmentSelectedGroupKey: state.amendmentSelectedGroupKey,
+    amendmentViewMode: state.amendmentViewMode,
     followupHistory: state.followupHistory,
     promptOutputs: state.promptOutputs,
     promptOptions: {
@@ -202,6 +244,7 @@ function buildPersistedSession() {
       citationFormatNumbers: citationFormatNumbersInputEl.value || "",
     },
     publicationInput: publicationInputEl.value || "",
+    numberType: getSelectedNumberType(),
     savedAt: Date.now(),
   };
 }
@@ -371,6 +414,7 @@ async function refreshSettingsModelList(selectedModel) {
 
 async function openSettingsModal() {
   settingsApiKeyInputEl.value = state.apiKey || "";
+  settingsKiprisApiKeyInputEl.value = state.kiprisApiKey || "";
   renderSettingsModelOptions(state.model || DEFAULT_MODEL);
   showSettingsStatus("");
   settingsModalEl.classList.remove("hidden");
@@ -387,6 +431,7 @@ function closeSettingsModal() {
 
 async function saveSettingsFromModal() {
   const apiKey = settingsApiKeyInputEl.value.trim();
+  const kiprisApiKey = settingsKiprisApiKeyInputEl.value.trim();
   const model = settingsModelSelectEl.value || DEFAULT_MODEL;
 
   if (!apiKey) {
@@ -394,9 +439,11 @@ async function saveSettingsFromModal() {
     return;
   }
 
-  await chrome.storage.sync.set({ apiKey, model });
+  await chrome.storage.sync.set({ apiKey, kiprisApiKey, model });
   state.apiKey = apiKey;
+  state.kiprisApiKey = kiprisApiKey;
   state.model = model;
+  syncNumberTypeSelectState();
   updateHeader();
   updateControls();
   showSettingsStatus("저장되었습니다.");
@@ -411,7 +458,10 @@ async function clearApiKeyFromModal() {
 }
 
 function updateControls() {
+  syncNumberTypeSelectState();
+
   const hasKey = Boolean(state.apiKey);
+  const hasKiprisKey = Boolean(String(state.kiprisApiKey || "").trim());
   const hasPatent = Boolean(state.patentData);
   const hasSummary = Boolean(state.summaryMarkdown);
   const hasDescription = Boolean(state.patentData?.description);
@@ -430,6 +480,14 @@ function updateControls() {
     Number.isInteger(evidenceClaimNumber) && evidenceClaimNumber >= 1;
   const hasCitationFormatNumbers =
     parseCitationNumbers(citationFormatNumbersInputEl.value).length > 0;
+  const currentApplicationNumber = resolveCurrentApplicationNumber();
+  const loadedApplicationNumber = normalizeApplicationNumber(
+    state.amendmentHistoryApplicationNumber || ""
+  );
+  const hasLoadedAmendmentForCurrent =
+    Array.isArray(state.amendmentHistoryItems) &&
+    Boolean(currentApplicationNumber) &&
+    loadedApplicationNumber === currentApplicationNumber;
 
   const canStart = hasKey && hasPromptSet && !state.pending;
   const canInteract = hasKey && hasPromptSet && hasPatent && !state.pending;
@@ -441,18 +499,29 @@ function updateControls() {
     hasDescription &&
     Boolean(state.prompts?.highlightTerms);
   const canEditHighlights = hasPatent && !state.pending;
+  const canLoadAmendmentHistory =
+    hasPatent &&
+    hasKiprisKey &&
+    Boolean(currentApplicationNumber) &&
+    !state.pending;
 
   keyNoticeEl.classList.toggle("hidden", hasKey);
 
+  numberTypeSelectEl.disabled = !canStart;
   publicationInputEl.disabled = !canStart;
   summarizeBtnEl.disabled = !canStart;
   generateSummaryBtnEl.disabled = !canGenerateSummary;
+
+  if (!hasKiprisKey && getSelectedNumberType() === NUMBER_TYPE_APPLICATION) {
+    summarizeBtnEl.disabled = true;
+  }
 
   followupInputEl.disabled = !(canInteract && hasSummary);
   followupSendBtnEl.disabled = !(canInteract && hasSummary);
 
   analyzeAllClaimsBtnEl.disabled = !(canInteract && state.claimItems.length > 0);
   generateHighlightsBtnEl.disabled = !canGenerateHighlights;
+  openHighlightEditorBtnEl.disabled = !canEditHighlights;
   addHighlightGroupBtnEl.disabled = !canEditHighlights;
   generateCitationSearchPromptBtnEl.disabled = !(canPromptInteract && hasCutoffDate);
   generateInventiveStepPromptBtnEl.disabled =
@@ -461,6 +530,19 @@ function updateControls() {
     !(canPromptInteract && hasEvidenceClaimNumber && hasEvidenceCitationNumbers);
   generateCitationFormatPromptBtnEl.disabled =
     !(canPromptInteract && hasCitationFormatNumbers);
+  if (loadAmendmentHistoryBtnEl) {
+    loadAmendmentHistoryBtnEl.disabled = !canLoadAmendmentHistory;
+  }
+  if (amendmentGroupSelectEl) {
+    const hasSelectableGroupOption =
+      amendmentGroupSelectEl.options.length > 0 &&
+      Boolean(String(amendmentGroupSelectEl.options[0].value || "").trim());
+    amendmentGroupSelectEl.disabled =
+      state.pending || !hasLoadedAmendmentForCurrent || !hasSelectableGroupOption;
+  }
+  if (amendmentViewModeSelectEl) {
+    amendmentViewModeSelectEl.disabled = state.pending || !hasLoadedAmendmentForCurrent;
+  }
 
   for (const button of document.querySelectorAll(".claimAnalyzeBtn")) {
     button.disabled = !canInteract;
@@ -694,6 +776,18 @@ function closePromptModal() {
   promptModalEl.classList.add("hidden");
 }
 
+function openHighlightEditorModal() {
+  if (!highlightEditorModalEl || !highlightGroupsEditorEl) return;
+  renderHighlightGroupsEditor();
+  highlightEditorModalEl.classList.remove("hidden");
+  closeHighlightEditorBtnEl?.focus();
+}
+
+function closeHighlightEditorModal() {
+  if (!highlightEditorModalEl) return;
+  highlightEditorModalEl.classList.add("hidden");
+}
+
 function stripCodeFence(text) {
   const trimmed = String(text || "").trim();
   const fencedMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
@@ -825,12 +919,75 @@ function setClaimAnalysisView(el, analysisValue) {
 }
 
 function normalizePublicationNumber(value) {
-  return String(value || "")
+  let normalized = String(value || "")
     .toUpperCase()
     .trim()
     .replace(/^KR/, "")
     .replace(/A$/, "")
     .replace(/[^0-9A-Z]/g, "");
+
+  if (normalized.startsWith("10")) {
+    normalized = normalized.slice(2);
+  }
+
+  return normalized;
+}
+
+function normalizeApplicationNumber(value) {
+  return String(value || "")
+    .toUpperCase()
+    .trim()
+    .replace(/^KR/, "")
+    .replace(/[^0-9A-Z]/g, "");
+}
+
+function sanitizeNumberType(value) {
+  return value === NUMBER_TYPE_APPLICATION
+    ? NUMBER_TYPE_APPLICATION
+    : NUMBER_TYPE_PUBLICATION;
+}
+
+function getSelectedNumberType() {
+  return sanitizeNumberType(numberTypeSelectEl?.value);
+}
+
+function syncNumberTypeSelectState() {
+  if (!numberTypeSelectEl) return;
+
+  const hasKiprisApiKey = Boolean(String(state.kiprisApiKey || "").trim());
+  const applicationOption = numberTypeSelectEl.querySelector(
+    `option[value="${NUMBER_TYPE_APPLICATION}"]`
+  );
+  if (applicationOption) {
+    applicationOption.disabled = !hasKiprisApiKey;
+  }
+
+  if (!hasKiprisApiKey && getSelectedNumberType() === NUMBER_TYPE_APPLICATION) {
+    numberTypeSelectEl.value = NUMBER_TYPE_PUBLICATION;
+  }
+
+  numberTypeSelectEl.title = hasKiprisApiKey
+    ? ""
+    : "출원번호 조회에는 KIPRIS API Key가 필요합니다.";
+}
+
+function resolveCurrentApplicationNumber() {
+  const candidates = [
+    state.patentData?.applicationNumber,
+    state.patentData?.queryType === NUMBER_TYPE_APPLICATION
+      ? state.patentData?.inputNumber
+      : "",
+    getSelectedNumberType() === NUMBER_TYPE_APPLICATION ? publicationInputEl?.value : "",
+  ];
+
+  for (const candidate of candidates) {
+    const normalized = normalizeApplicationNumber(candidate);
+    if (normalized) {
+      return normalized;
+    }
+  }
+
+  return "";
 }
 
 function splitClaims(rawClaims) {
@@ -949,6 +1106,137 @@ function splitClaims(rawClaims) {
   }
 
   return normalizedFallbackClaims;
+}
+
+function sanitizeAmendmentHistoryItems(rawItems) {
+  if (!Array.isArray(rawItems)) return [];
+
+  return rawItems.map((item) => ({
+    applicationNumber: String(item?.applicationNumber || "").trim(),
+    receiptSendSerialNumber: String(item?.receiptSendSerialNumber || "").trim(),
+    receiptSendNumber: String(item?.receiptSendNumber || "").trim(),
+    petitionclauseNumber: String(item?.petitionclauseNumber || "").trim(),
+    changeTypeCode: String(item?.changeTypeCode || "").trim(),
+    changeTypeName: String(item?.changeTypeName || "").trim(),
+    petitionclauseRaw: String(item?.petitionclauseRaw || "").trim(),
+    petitionclause: String(item?.petitionclause || "").trim(),
+    transferReceiptDocNumber: String(item?.transferReceiptDocNumber || "").trim(),
+    transferPetitionclauseRaw: String(item?.transferPetitionclauseRaw || "").trim(),
+    transferPetitionclause: String(item?.transferPetitionclause || "").trim(),
+  }));
+}
+
+function tokenizeDiffText(value) {
+  return String(value || "").match(/(\s+|[^\s]+)/g) || [];
+}
+
+function pushDiffSegment(segments, type, value) {
+  if (!value) return;
+  const last = segments[segments.length - 1];
+  if (last && last.type === type) {
+    last.value += value;
+    return;
+  }
+  segments.push({ type, value });
+}
+
+function buildTokenDiffSegments(beforeText, afterText) {
+  const beforeTokens = tokenizeDiffText(beforeText);
+  const afterTokens = tokenizeDiffText(afterText);
+
+  if (beforeTokens.length === 0 && afterTokens.length === 0) {
+    return [];
+  }
+
+  const matrixSize = beforeTokens.length * afterTokens.length;
+  if (matrixSize > 220_000) {
+    const fallback = [];
+    if (beforeText) {
+      fallback.push({ type: "remove", value: beforeText });
+    }
+    if (afterText) {
+      fallback.push({ type: "add", value: afterText });
+    }
+    return fallback;
+  }
+
+  const rows = beforeTokens.length;
+  const cols = afterTokens.length;
+  const dp = Array.from({ length: rows + 1 }, () => new Uint16Array(cols + 1));
+
+  for (let row = rows - 1; row >= 0; row -= 1) {
+    for (let col = cols - 1; col >= 0; col -= 1) {
+      if (beforeTokens[row] === afterTokens[col]) {
+        dp[row][col] = dp[row + 1][col + 1] + 1;
+      } else {
+        dp[row][col] = Math.max(dp[row + 1][col], dp[row][col + 1]);
+      }
+    }
+  }
+
+  const segments = [];
+  let row = 0;
+  let col = 0;
+
+  while (row < rows && col < cols) {
+    if (beforeTokens[row] === afterTokens[col]) {
+      pushDiffSegment(segments, "equal", beforeTokens[row]);
+      row += 1;
+      col += 1;
+      continue;
+    }
+
+    if (dp[row + 1][col] >= dp[row][col + 1]) {
+      pushDiffSegment(segments, "remove", beforeTokens[row]);
+      row += 1;
+    } else {
+      pushDiffSegment(segments, "add", afterTokens[col]);
+      col += 1;
+    }
+  }
+
+  while (row < rows) {
+    pushDiffSegment(segments, "remove", beforeTokens[row]);
+    row += 1;
+  }
+
+  while (col < cols) {
+    pushDiffSegment(segments, "add", afterTokens[col]);
+    col += 1;
+  }
+
+  return segments;
+}
+
+function buildAmendmentDiffHtml(beforeText, afterText) {
+  const before = String(beforeText || "");
+  const after = String(afterText || "");
+
+  if (!before && !after) {
+    return "";
+  }
+
+  if (before === after) {
+    return escapeHtml(after || before);
+  }
+
+  const segments = buildTokenDiffSegments(before, after);
+  if (segments.length === 0) {
+    return escapeHtml(after || before);
+  }
+
+  return segments
+    .map((segment) => {
+      const safeValue = escapeHtml(segment.value);
+      if (segment.type === "add") {
+        return `<span class="amendAdded">${safeValue}</span>`;
+      }
+      if (segment.type === "remove") {
+        return `<span class="amendRemoved">${safeValue}</span>`;
+      }
+      return safeValue;
+    })
+    .join("");
 }
 
 function parseNonNegativeInteger(value) {
@@ -1434,6 +1722,14 @@ function setPatentMeta(data) {
 
   summaryMetaEl.appendChild(document.createTextNode(` | ${title}`));
 
+  if (data?.resolvedFromApplication && data?.applicationNumber) {
+    summaryMetaEl.appendChild(
+      document.createTextNode(
+        ` | 출원번호 ${data.applicationNumber} → 공개번호 ${data.publicationNumber || ""}`
+      )
+    );
+  }
+
   if (sourceUrl) {
     summaryMetaEl.appendChild(document.createTextNode(" | "));
     const link = document.createElement("a");
@@ -1530,6 +1826,482 @@ function renderDescriptionTab() {
   });
 }
 
+function setAmendmentHistoryListEmpty(message = EMPTY_AMENDMENT_HISTORY) {
+  if (!amendmentHistoryListEl) return;
+  amendmentHistoryListEl.textContent = message;
+  amendmentHistoryListEl.classList.add("empty");
+}
+
+function appendAmendmentMetaChip(rowEl, text, variant = "") {
+  const normalized = String(text || "").trim();
+  if (!normalized) return;
+  const chip = document.createElement("span");
+  chip.className = "amendmentMetaChip";
+  if (variant) {
+    chip.classList.add(variant);
+  }
+  chip.textContent = normalized;
+  rowEl.appendChild(chip);
+}
+
+function normalizeAmendmentGroupKey(value) {
+  return String(value || "").trim();
+}
+
+function sanitizeAmendmentViewMode(value) {
+  const normalized = String(value || "").trim();
+  if (normalized === AMENDMENT_VIEW_MODE_MODIFIED) {
+    return AMENDMENT_VIEW_MODE_MODIFIED;
+  }
+  if (normalized === AMENDMENT_VIEW_MODE_DELETED) {
+    return AMENDMENT_VIEW_MODE_DELETED;
+  }
+  if (normalized === AMENDMENT_VIEW_MODE_ADDED) {
+    return AMENDMENT_VIEW_MODE_ADDED;
+  }
+  if (normalized === AMENDMENT_VIEW_MODE_FINAL) {
+    return AMENDMENT_VIEW_MODE_FINAL;
+  }
+
+  // Backward compatibility with old persisted values.
+  if (normalized === "deletedOnly") {
+    return AMENDMENT_VIEW_MODE_DELETED;
+  }
+  if (normalized === "addedOnly") {
+    return AMENDMENT_VIEW_MODE_ADDED;
+  }
+  if (normalized === "finalOnly") {
+    return AMENDMENT_VIEW_MODE_FINAL;
+  }
+
+  return AMENDMENT_VIEW_MODE_MODIFIED;
+}
+
+function makeAmendmentGroupKey(item, index) {
+  const receipt = String(item?.receiptSendNumber || "").trim();
+  if (receipt) {
+    return `receipt:${receipt}`;
+  }
+
+  const serial = String(item?.receiptSendSerialNumber || "").trim();
+  if (serial) {
+    return `serial:${serial}`;
+  }
+
+  return `row:${index + 1}`;
+}
+
+function makeAmendmentClaimKey(item, groupRowIndex) {
+  const claimNumber = String(item?.petitionclauseNumber || "").trim();
+  if (claimNumber) {
+    return claimNumber;
+  }
+  return `line-${groupRowIndex + 1}`;
+}
+
+function buildAmendmentReceiptGroups(items) {
+  const groups = [];
+  const groupMap = new Map();
+
+  items.forEach((item, index) => {
+    const groupKey = makeAmendmentGroupKey(item, index);
+    let group = groupMap.get(groupKey);
+
+    if (!group) {
+      group = {
+        key: groupKey,
+        receiptSendNumber: String(item?.receiptSendNumber || "").trim(),
+        receiptSendSerialNumber: String(item?.receiptSendSerialNumber || "").trim(),
+        transferReceiptDocNumber: String(item?.transferReceiptDocNumber || "").trim(),
+        claimsByKey: new Map(),
+        claimKeys: [],
+        effectiveClaimsByKey: new Map(),
+        effectiveClaimKeys: [],
+      };
+      groupMap.set(groupKey, group);
+      groups.push(group);
+    }
+
+    if (!group.transferReceiptDocNumber) {
+      group.transferReceiptDocNumber = String(item?.transferReceiptDocNumber || "").trim();
+    }
+
+    const claimKey = makeAmendmentClaimKey(item, group.claimKeys.length);
+    const claimText = String(item?.petitionclause || "").trim();
+    if (!group.claimsByKey.has(claimKey)) {
+      group.claimKeys.push(claimKey);
+    }
+    group.claimsByKey.set(claimKey, claimText);
+  });
+
+  let previousEffectiveClaims = new Map();
+  groups.forEach((group, index) => {
+    const effectiveClaims =
+      index === 0 ? new Map() : new Map(previousEffectiveClaims);
+
+    group.claimKeys.forEach((claimKey) => {
+      const nextText = String(group.claimsByKey.get(claimKey) || "").trim();
+      if (!nextText) {
+        // Explicit empty text is treated as deletion, but missing mention means carry-forward.
+        effectiveClaims.delete(claimKey);
+      } else {
+        effectiveClaims.set(claimKey, nextText);
+      }
+    });
+
+    group.effectiveClaimsByKey = effectiveClaims;
+    group.effectiveClaimKeys = Array.from(effectiveClaims.keys()).sort(compareClaimKeys);
+    previousEffectiveClaims = new Map(effectiveClaims);
+  });
+
+  return groups;
+}
+
+function formatAmendmentGroupLabel(group, index) {
+  const receipt = String(group?.receiptSendNumber || "").trim();
+  const serial = String(group?.receiptSendSerialNumber || "").trim();
+  const receiptText = receipt ? `Receipt ${receipt}` : "Receipt -";
+  const serialText = serial ? ` / Serial ${serial}` : "";
+  return `${index + 1}. ${receiptText}${serialText}`;
+}
+
+function compareClaimKeys(a, b) {
+  const aText = String(a || "");
+  const bText = String(b || "");
+  const aNum = Number(aText);
+  const bNum = Number(bText);
+
+  const aNumeric = Number.isFinite(aNum) && /^\d+$/.test(aText);
+  const bNumeric = Number.isFinite(bNum) && /^\d+$/.test(bText);
+
+  if (aNumeric && bNumeric) {
+    return aNum - bNum;
+  }
+  if (aNumeric) return -1;
+  if (bNumeric) return 1;
+  return aText.localeCompare(bText);
+}
+
+function formatClaimKeyLabel(claimKey, index) {
+  const keyText = String(claimKey || "").trim();
+  if (/^\d+$/.test(keyText)) {
+    return `Claim ${keyText}`;
+  }
+  return `Claim Item ${index + 1}`;
+}
+
+function renderAmendmentGroupSelect(groups, selectedKey) {
+  if (!amendmentGroupSelectEl) return;
+
+  amendmentGroupSelectEl.textContent = "";
+  if (!Array.isArray(groups) || groups.length === 0) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "No groups";
+    amendmentGroupSelectEl.appendChild(option);
+    amendmentGroupSelectEl.disabled = true;
+    return;
+  }
+
+  groups.forEach((group, index) => {
+    const option = document.createElement("option");
+    option.value = group.key;
+    option.textContent = formatAmendmentGroupLabel(group, index);
+    amendmentGroupSelectEl.appendChild(option);
+  });
+
+  amendmentGroupSelectEl.value = selectedKey;
+  amendmentGroupSelectEl.disabled = false;
+}
+
+function renderAmendmentViewModeSelect(viewMode) {
+  if (!amendmentViewModeSelectEl) return;
+  amendmentViewModeSelectEl.value = sanitizeAmendmentViewMode(viewMode);
+}
+
+function hasNonWhitespaceText(value) {
+  return /\S/.test(String(value || ""));
+}
+
+function buildAmendmentViewContent(viewMode, beforeText, afterText) {
+  const before = String(beforeText || "");
+  const after = String(afterText || "");
+  const mode = sanitizeAmendmentViewMode(viewMode);
+
+  if (mode === AMENDMENT_VIEW_MODE_FINAL) {
+    const html = escapeHtml(after);
+    return {
+      html,
+      hasVisibleContent: hasNonWhitespaceText(after),
+    };
+  }
+
+  if (before === after) {
+    const html = escapeHtml(after);
+    return {
+      html,
+      hasVisibleContent: hasNonWhitespaceText(after),
+    };
+  }
+
+  const segments = buildTokenDiffSegments(before, after);
+  const htmlParts = [];
+  let rawVisibleText = "";
+
+  for (const segment of segments) {
+    const value = String(segment.value || "");
+    if (!value) continue;
+
+    if (mode === AMENDMENT_VIEW_MODE_MODIFIED) {
+      if (segment.type === "add") {
+        htmlParts.push(`<span class="amendAdded">${escapeHtml(value)}</span>`);
+      } else if (segment.type === "remove") {
+        htmlParts.push(`<span class="amendRemoved">${escapeHtml(value)}</span>`);
+      } else {
+        htmlParts.push(escapeHtml(value));
+      }
+      rawVisibleText += value;
+      continue;
+    }
+
+    if (mode === AMENDMENT_VIEW_MODE_DELETED) {
+      if (segment.type === "remove") {
+        htmlParts.push(`<span class="amendRemoved">${escapeHtml(value)}</span>`);
+        rawVisibleText += value;
+        continue;
+      }
+      if (segment.type === "equal" || segment.type === "add") {
+        htmlParts.push(escapeHtml(value));
+        rawVisibleText += value;
+      }
+      continue;
+    }
+
+    if (mode === AMENDMENT_VIEW_MODE_ADDED) {
+      if (segment.type === "add") {
+        htmlParts.push(`<span class="amendAdded">${escapeHtml(value)}</span>`);
+        rawVisibleText += value;
+        continue;
+      }
+      if (segment.type === "equal") {
+        htmlParts.push(escapeHtml(value));
+        rawVisibleText += value;
+      }
+    }
+  }
+
+  const html = htmlParts.join("");
+  return {
+    html,
+    hasVisibleContent: hasNonWhitespaceText(rawVisibleText),
+  };
+}
+
+function renderAmendmentHistoryTab() {
+  if (!amendmentHistoryMetaEl || !amendmentHistoryStatusEl || !amendmentHistoryListEl) {
+    return;
+  }
+
+  const viewMode = sanitizeAmendmentViewMode(state.amendmentViewMode);
+  state.amendmentViewMode = viewMode;
+  renderAmendmentViewModeSelect(viewMode);
+
+  const hasKiprisApiKey = Boolean(String(state.kiprisApiKey || "").trim());
+  const currentApplicationNumber = resolveCurrentApplicationNumber();
+  const loadedApplicationNumber = normalizeApplicationNumber(
+    state.amendmentHistoryApplicationNumber || ""
+  );
+  const hasLoadedForCurrentApplication =
+    Array.isArray(state.amendmentHistoryItems) &&
+    loadedApplicationNumber &&
+    loadedApplicationNumber === currentApplicationNumber;
+  amendmentHistoryMetaEl.textContent = `Application No: ${currentApplicationNumber || "-"}`;
+
+  if (!state.patentData) {
+    renderAmendmentGroupSelect([], "");
+    amendmentHistoryStatusEl.textContent =
+      "Load a patent first, then fetch amendment history.";
+    setAmendmentHistoryListEmpty(EMPTY_AMENDMENT_HISTORY);
+    return;
+  }
+
+  if (!hasKiprisApiKey) {
+    renderAmendmentGroupSelect([], "");
+    amendmentHistoryStatusEl.textContent =
+      "KIPRIS API Key is required for amendment history lookup.";
+    setAmendmentHistoryListEmpty("Register KIPRIS API Key in settings.");
+    return;
+  }
+
+  if (!currentApplicationNumber) {
+    renderAmendmentGroupSelect([], "");
+    amendmentHistoryStatusEl.textContent =
+      "No application number available for the current patent.";
+    setAmendmentHistoryListEmpty("Search by application number or load a patent with application number.");
+    return;
+  }
+
+  if (!hasLoadedForCurrentApplication) {
+    renderAmendmentGroupSelect([], "");
+    amendmentHistoryStatusEl.textContent =
+      `Ready to load amendment history for ${currentApplicationNumber}.`;
+    setAmendmentHistoryListEmpty(EMPTY_AMENDMENT_HISTORY);
+    return;
+  }
+
+  const items = sanitizeAmendmentHistoryItems(state.amendmentHistoryItems);
+  state.amendmentHistoryItems = items;
+
+  if (items.length === 0) {
+    renderAmendmentGroupSelect([], "");
+    amendmentHistoryStatusEl.textContent =
+      `No amendment history found for ${loadedApplicationNumber}.`;
+    setAmendmentHistoryListEmpty("No amendment records were returned.");
+    return;
+  }
+
+  const groups = buildAmendmentReceiptGroups(items);
+  if (groups.length === 0) {
+    renderAmendmentGroupSelect([], "");
+    amendmentHistoryStatusEl.textContent =
+      `No receipt groups found for ${loadedApplicationNumber}.`;
+    setAmendmentHistoryListEmpty("No comparable receipt groups were returned.");
+    return;
+  }
+
+  let selectedGroupKey = normalizeAmendmentGroupKey(state.amendmentSelectedGroupKey);
+  if (!groups.some((group) => group.key === selectedGroupKey)) {
+    selectedGroupKey = groups[groups.length - 1].key;
+  }
+  state.amendmentSelectedGroupKey = selectedGroupKey;
+  renderAmendmentGroupSelect(groups, selectedGroupKey);
+
+  const selectedIndex = groups.findIndex((group) => group.key === selectedGroupKey);
+  const selectedGroup = groups[selectedIndex];
+  const previousGroup = selectedIndex > 0 ? groups[selectedIndex - 1] : null;
+  if (!selectedGroup) {
+    amendmentHistoryStatusEl.textContent = "Invalid receipt group selection.";
+    setAmendmentHistoryListEmpty("Select a valid receipt group.");
+    return;
+  }
+
+  const selectedLabel = formatAmendmentGroupLabel(selectedGroup, selectedIndex);
+  const modeLabel =
+    viewMode === AMENDMENT_VIEW_MODE_MODIFIED
+      ? "수정 보기"
+      : viewMode === AMENDMENT_VIEW_MODE_DELETED
+        ? "삭제된 부분만 보기"
+        : viewMode === AMENDMENT_VIEW_MODE_ADDED
+          ? "추가된 부분만 보기"
+          : "최종본만 보기";
+  if (previousGroup) {
+    const previousLabel = formatAmendmentGroupLabel(previousGroup, selectedIndex - 1);
+    amendmentHistoryStatusEl.textContent =
+      `Comparing ${selectedLabel} with previous group (${previousLabel}) [${modeLabel}]`;
+  } else {
+    amendmentHistoryStatusEl.textContent =
+      `${selectedLabel} has no previous group. Comparison uses an empty baseline. [${modeLabel}]`;
+  }
+
+  amendmentHistoryListEl.textContent = "";
+  amendmentHistoryListEl.classList.remove("empty");
+
+  const claimKeys =
+    viewMode === AMENDMENT_VIEW_MODE_FINAL ||
+    viewMode === AMENDMENT_VIEW_MODE_ADDED
+      ? Array.from(selectedGroup.effectiveClaimKeys || []).sort(compareClaimKeys)
+      : Array.from(
+          new Set([
+            ...(selectedGroup.effectiveClaimKeys || []),
+            ...(previousGroup?.effectiveClaimKeys || []),
+          ])
+        ).sort(compareClaimKeys);
+
+  if (claimKeys.length === 0) {
+    setAmendmentHistoryListEmpty("No comparable claim text in the selected group.");
+    return;
+  }
+
+  claimKeys.forEach((claimKey, index) => {
+    const beforeText = String(
+      previousGroup?.effectiveClaimsByKey?.get(claimKey) || ""
+    );
+    const afterText = String(
+      selectedGroup.effectiveClaimsByKey?.get(claimKey) || ""
+    );
+    const modeContent = buildAmendmentViewContent(viewMode, beforeText, afterText);
+    if (!modeContent.hasVisibleContent) return;
+
+    const isUnchanged = beforeText && afterText && beforeText === afterText;
+
+    const card = document.createElement("article");
+    card.className = "amendmentCard";
+
+    const head = document.createElement("div");
+    head.className = "amendmentCardHead";
+
+    const title = document.createElement("h3");
+    title.className = "amendmentCardTitle";
+    title.textContent = formatClaimKeyLabel(claimKey, index);
+
+    const indexLabel = document.createElement("span");
+    indexLabel.className = "amendmentCardIndex";
+    indexLabel.textContent = `Group Claim ${index + 1}`;
+    head.append(title, indexLabel);
+
+    const metaRow = document.createElement("div");
+    metaRow.className = "amendmentMetaRow";
+    appendAmendmentMetaChip(
+      metaRow,
+      `Current: ${selectedGroup.receiptSendNumber || selectedGroup.receiptSendSerialNumber || "-"}`
+    );
+    appendAmendmentMetaChip(
+      metaRow,
+      `Previous: ${previousGroup?.receiptSendNumber || previousGroup?.receiptSendSerialNumber || "-"}`
+    );
+
+    const diffWrap = document.createElement("div");
+    diffWrap.className = "amendmentDiff";
+    const diffPre = document.createElement("pre");
+    diffPre.className = "amendmentDiffText";
+    diffPre.innerHTML = modeContent.html;
+    if (viewMode !== AMENDMENT_VIEW_MODE_FINAL && isUnchanged) {
+      diffPre.classList.add("empty");
+    }
+
+    diffWrap.appendChild(diffPre);
+    card.append(head);
+    if (metaRow.childElementCount > 0) {
+      card.append(metaRow);
+    }
+    card.append(diffWrap);
+    amendmentHistoryListEl.appendChild(card);
+  });
+
+  if (amendmentHistoryListEl.childElementCount === 0) {
+    let emptyByModeMessage = "선택한 그룹의 최종본 텍스트가 없습니다.";
+    if (viewMode === AMENDMENT_VIEW_MODE_MODIFIED) {
+      emptyByModeMessage = "선택한 그룹에서 수정 내용을 표시할 수 없습니다.";
+    } else if (viewMode === AMENDMENT_VIEW_MODE_DELETED) {
+      emptyByModeMessage = "선택한 그룹에서 삭제된 내용을 표시할 수 없습니다.";
+    } else if (viewMode === AMENDMENT_VIEW_MODE_ADDED) {
+      emptyByModeMessage = "선택한 그룹에서 추가된 내용을 표시할 수 없습니다.";
+    }
+    setAmendmentHistoryListEmpty(emptyByModeMessage);
+    return;
+  }
+
+  if (amendmentHistoryListEl.childElementCount === 0) {
+    const emptyByModeMessage =
+      viewMode === AMENDMENT_VIEW_MODE_DELETED
+        ? "선택한 그룹에서 삭제된 부분이 없습니다."
+        : viewMode === AMENDMENT_VIEW_MODE_ADDED
+          ? "선택한 그룹에서 추가된 부분이 없습니다."
+          : "선택한 그룹의 최종본 텍스트가 없습니다.";
+    setAmendmentHistoryListEmpty(emptyByModeMessage);
+  }
+}
+
 function renderClaimsCards() {
   claimsCardsEl.textContent = "";
   renderClaimsCountText();
@@ -1588,6 +2360,9 @@ function clearPatentViews(options = {}) {
   state.claimItems = [];
   state.claimAnalyses = {};
   state.highlightGroups = [];
+  state.amendmentHistoryItems = null;
+  state.amendmentHistoryApplicationNumber = "";
+  state.amendmentSelectedGroupKey = "";
   state.followupHistory = [];
   state.promptOutputs = createEmptyPromptOutputs();
   state.patentData = null;
@@ -1599,6 +2374,7 @@ function clearPatentViews(options = {}) {
   renderHighlightGroupsEditor();
   renderClaimsCards();
   renderDescriptionTab();
+  renderAmendmentHistoryTab();
   renderPromptCards();
 
   if (persist) {
@@ -1641,6 +2417,7 @@ function renderPatentViewsFromState() {
   renderHighlightGroupsEditor();
   renderClaimsCards();
   renderDescriptionTab();
+  renderAmendmentHistoryTab();
   renderPromptCards();
 }
 
@@ -1665,6 +2442,14 @@ function applyPersistedSession(session) {
   state.highlightGroups = sanitizeHighlightGroups(session.highlightGroups, {
     keepEmpty: true,
   });
+  state.amendmentHistoryItems = Array.isArray(session.amendmentHistoryItems)
+    ? sanitizeAmendmentHistoryItems(session.amendmentHistoryItems)
+    : null;
+  state.amendmentHistoryApplicationNumber = normalizeApplicationNumber(
+    session.amendmentHistoryApplicationNumber || ""
+  );
+  state.amendmentSelectedGroupKey = String(session.amendmentSelectedGroupKey || "");
+  state.amendmentViewMode = sanitizeAmendmentViewMode(session.amendmentViewMode);
   state.followupHistory = sanitizeFollowupHistory(session.followupHistory);
   state.promptOutputs = {
     citationSearch: String(
@@ -1699,10 +2484,16 @@ function applyPersistedSession(session) {
     promptOptions.citationFormatNumbers || ""
   );
 
+  if (numberTypeSelectEl) {
+    numberTypeSelectEl.value = sanitizeNumberType(session.numberType);
+  }
+
   const savedInput = String(session.publicationInput || "").trim();
   if (savedInput) {
     publicationInputEl.value = savedInput;
   }
+
+  syncNumberTypeSelectState();
 
   renderPatentViewsFromState();
   setActiveTab(state.activeTab, { persist: false });
@@ -1816,10 +2607,11 @@ async function requestModel(promptText, temperature = 0.2) {
   return output;
 }
 
-async function collectPatentSections(publicationNumber) {
+async function collectPatentSections(inputNumber, numberType) {
   const result = await chrome.runtime.sendMessage({
     type: "collectPatentSections",
-    publicationNumber,
+    inputNumber,
+    numberType,
   });
 
   if (!result?.ok) {
@@ -1828,14 +2620,78 @@ async function collectPatentSections(publicationNumber) {
   return result.data;
 }
 
-async function runPrimaryFlow(publicationNumber) {
+async function fetchAmendmentHistoryDetailInfo(applicationNumber) {
+  const result = await chrome.runtime.sendMessage({
+    type: "getAmendmentHistoryDetailInfo",
+    applicationNumber,
+  });
+
+  if (!result?.ok) {
+    throw new Error(result?.error || "Failed to load amendment history.");
+  }
+
+  return {
+    applicationNumber: normalizeApplicationNumber(
+      result?.data?.applicationNumber || applicationNumber
+    ),
+    items: sanitizeAmendmentHistoryItems(result?.data?.items || []),
+  };
+}
+
+async function loadAmendmentHistoryForCurrentApplication() {
+  if (!state.patentData) {
+    updateStatus("특허를 먼저 조회해 주세요.", true);
+    return;
+  }
+
+  const applicationNumber = resolveCurrentApplicationNumber();
+  if (!applicationNumber) {
+    updateStatus("출원번호가 없어 변동 이력을 조회할 수 없습니다.", true);
+    return;
+  }
+
+  if (!String(state.kiprisApiKey || "").trim()) {
+    updateStatus("KIPRIS API Key를 등록해야 변동 이력을 조회할 수 있습니다.", true);
+    return;
+  }
+
+  setPending(true);
+  updateStatus(`청구항 변동 이력 조회 중... (${applicationNumber})`);
+
+  try {
+    const { applicationNumber: resolvedApplicationNumber, items } =
+      await fetchAmendmentHistoryDetailInfo(applicationNumber);
+    state.amendmentHistoryApplicationNumber =
+      resolvedApplicationNumber || applicationNumber;
+    state.amendmentHistoryItems = items;
+    state.amendmentSelectedGroupKey = "";
+    renderAmendmentHistoryTab();
+
+    if (items.length === 0) {
+      updateStatus("완료: 변동 이력이 없습니다.");
+    } else {
+      updateStatus(`완료: 변동 이력 ${items.length}건을 불러왔습니다.`);
+    }
+  } catch (error) {
+    updateStatus(`오류: ${error.message}`, true);
+  } finally {
+    setPending(false);
+    queuePersistSession();
+  }
+}
+
+async function runPrimaryFlow(inputNumber, numberType) {
   setPending(true);
   updateStatus("특허 페이지에서 청구항/발명의 설명을 수집 중입니다...");
+
+  if (numberType === NUMBER_TYPE_APPLICATION) {
+    updateStatus("출원번호를 공개번호로 변환한 뒤 특허 페이지를 수집 중입니다...");
+  }
 
   clearPatentViews();
 
   try {
-    const patentData = await collectPatentSections(publicationNumber);
+    const patentData = await collectPatentSections(inputNumber, numberType);
     state.patentData = patentData;
     state.claimItems = splitClaims(patentData.claims);
 
@@ -1844,6 +2700,7 @@ async function runPrimaryFlow(publicationNumber) {
     renderHighlightGroupsEditor();
     renderClaimsCards();
     renderDescriptionTab();
+    renderAmendmentHistoryTab();
     updateStatus("원문 로딩 완료: 요약 탭에서 '요약 생성' 버튼을 눌러주세요.");
   } catch (error) {
     updateStatus(`오류: ${error.message}`, true);
@@ -2223,12 +3080,16 @@ async function generatePromptAndCopy(kind) {
 }
 
 async function loadSettings() {
-  const { apiKey = "", model = DEFAULT_MODEL } = await chrome.storage.sync.get([
-    "apiKey",
-    "model",
-  ]);
+  const { apiKey = "", kiprisApiKey = "", model = DEFAULT_MODEL } =
+    await chrome.storage.sync.get([
+      "apiKey",
+      "kiprisApiKey",
+      "model",
+    ]);
   state.apiKey = apiKey;
+  state.kiprisApiKey = kiprisApiKey;
   state.model = model || DEFAULT_MODEL;
+  syncNumberTypeSelectState();
   updateHeader();
 }
 
@@ -2242,13 +3103,28 @@ patentFormEl.addEventListener("submit", (event) => {
   event.preventDefault();
   if (state.pending) return;
 
-  const publicationNumber = normalizePublicationNumber(publicationInputEl.value);
-  if (!publicationNumber) {
+  const numberType = getSelectedNumberType();
+  const hasKiprisApiKey = Boolean(String(state.kiprisApiKey || "").trim());
+
+  if (numberType === NUMBER_TYPE_APPLICATION && !hasKiprisApiKey) {
+    updateStatus("출원번호 조회에는 KIPRIS API Key가 필요합니다.", true);
+    return;
+  }
+
+  const normalizedInput =
+    numberType === NUMBER_TYPE_APPLICATION
+      ? normalizeApplicationNumber(publicationInputEl.value)
+      : normalizePublicationNumber(publicationInputEl.value);
+  if (!normalizedInput) {
+    if (numberType === NUMBER_TYPE_APPLICATION) {
+      updateStatus("유효한 출원번호를 입력해 주세요.", true);
+      return;
+    }
     updateStatus("유효한 공개번호를 입력해 주세요.", true);
     return;
   }
 
-  runPrimaryFlow(publicationNumber);
+  runPrimaryFlow(normalizedInput, numberType);
 });
 
 generateSummaryBtnEl.addEventListener("click", () => {
@@ -2275,6 +3151,36 @@ generateHighlightsBtnEl.addEventListener("click", () => {
   if (state.pending) return;
   generateHighlightsForCurrentPatent();
 });
+
+openHighlightEditorBtnEl.addEventListener("click", () => {
+  if (state.pending) return;
+  openHighlightEditorModal();
+});
+
+if (loadAmendmentHistoryBtnEl) {
+  loadAmendmentHistoryBtnEl.addEventListener("click", () => {
+    if (state.pending) return;
+    loadAmendmentHistoryForCurrentApplication();
+  });
+}
+
+if (amendmentGroupSelectEl) {
+  amendmentGroupSelectEl.addEventListener("change", () => {
+    state.amendmentSelectedGroupKey = String(amendmentGroupSelectEl.value || "");
+    renderAmendmentHistoryTab();
+    queuePersistSession();
+  });
+}
+
+if (amendmentViewModeSelectEl) {
+  amendmentViewModeSelectEl.addEventListener("change", () => {
+    state.amendmentViewMode = sanitizeAmendmentViewMode(
+      amendmentViewModeSelectEl.value
+    );
+    renderAmendmentHistoryTab();
+    queuePersistSession();
+  });
+}
 
 claimsCardsEl.addEventListener("click", (event) => {
   const button = event.target.closest(".claimAnalyzeBtn");
@@ -2368,11 +3274,23 @@ citationFormatNumbersInputEl.addEventListener("input", () => {
 });
 
 publicationInputEl.addEventListener("input", () => {
+  renderAmendmentHistoryTab();
+  updateControls();
+  queuePersistSession();
+});
+
+numberTypeSelectEl.addEventListener("change", () => {
+  renderAmendmentHistoryTab();
+  updateControls();
   queuePersistSession();
 });
 
 closePromptModalBtnEl.addEventListener("click", () => {
   closePromptModal();
+});
+
+closeHighlightEditorBtnEl.addEventListener("click", () => {
+  closeHighlightEditorModal();
 });
 
 copyPromptModalBtnEl.addEventListener("click", () => {
@@ -2422,10 +3340,20 @@ promptModalEl.addEventListener("click", (event) => {
   }
 });
 
+highlightEditorModalEl.addEventListener("click", (event) => {
+  if (event.target === highlightEditorModalEl) {
+    closeHighlightEditorModal();
+  }
+});
+
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   if (!settingsModalEl.classList.contains("hidden")) {
     closeSettingsModal();
+    return;
+  }
+  if (!highlightEditorModalEl.classList.contains("hidden")) {
+    closeHighlightEditorModal();
     return;
   }
   if (!promptModalEl.classList.contains("hidden")) {
@@ -2438,14 +3366,19 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   if (changes.apiKey) {
     state.apiKey = changes.apiKey.newValue ?? "";
   }
+  if (changes.kiprisApiKey) {
+    state.kiprisApiKey = changes.kiprisApiKey.newValue ?? "";
+  }
   if (changes.model) {
     state.model = changes.model.newValue || DEFAULT_MODEL;
     updateHeader();
   }
   if (!settingsModalEl.classList.contains("hidden")) {
     settingsApiKeyInputEl.value = state.apiKey || "";
+    settingsKiprisApiKeyInputEl.value = state.kiprisApiKey || "";
     renderSettingsModelOptions(state.model || DEFAULT_MODEL);
   }
+  renderAmendmentHistoryTab();
   updateControls();
 });
 

@@ -1,4 +1,5 @@
 const API_KEY_FIELD = document.getElementById("apiKey");
+const KIPRIS_API_KEY_FIELD = document.getElementById("kiprisApiKey");
 const MODEL_SELECT = document.getElementById("modelSelect");
 const LOAD_MODELS_BUTTON = document.getElementById("loadModelsBtn");
 const SAVE_BUTTON = document.getElementById("saveBtn");
@@ -129,12 +130,11 @@ async function refreshModels(selectedModel) {
 }
 
 async function loadSettings() {
-  const { apiKey = "", model = DEFAULT_MODEL } = await chrome.storage.sync.get([
-    "apiKey",
-    "model",
-  ]);
+  const { apiKey = "", kiprisApiKey = "", model = DEFAULT_MODEL } =
+    await chrome.storage.sync.get(["apiKey", "kiprisApiKey", "model"]);
 
   API_KEY_FIELD.value = apiKey;
+  KIPRIS_API_KEY_FIELD.value = kiprisApiKey;
   renderModelOptions(model || DEFAULT_MODEL);
 
   if (apiKey) {
@@ -148,6 +148,7 @@ async function loadSettings() {
 
 async function saveSettings() {
   const apiKey = API_KEY_FIELD.value.trim();
+  const kiprisApiKey = KIPRIS_API_KEY_FIELD.value.trim();
   const model = MODEL_SELECT.value || DEFAULT_MODEL;
 
   if (!apiKey) {
@@ -155,7 +156,7 @@ async function saveSettings() {
     return;
   }
 
-  await chrome.storage.sync.set({ apiKey, model });
+  await chrome.storage.sync.set({ apiKey, kiprisApiKey, model });
   showStatus("저장되었습니다.");
 }
 

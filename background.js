@@ -7,6 +7,12 @@ const EXTRACTION_RETRY_INTERVAL_MS = 1_200;
 const EXTRACTION_RELOAD_EVERY = 3;
 const CHATGPT_PROMPT_SELECTOR = "#prompt-textarea";
 const CHATGPT_SUBMIT_SELECTOR = "#composer-submit-button";
+const KIPRIS_APPLICATION_SEARCH_URL =
+  "http://plus.kipris.or.kr/openapi/rest/patUtiModInfoSearchSevice/applicationNumberSearchInfo";
+const KIPRIS_AMENDMENT_HISTORY_URL =
+  "http://plus.kipris.or.kr/openapi/rest/ClaimsChangeHistoryService/amendmentHistoryDetailInfo";
+const NUMBER_TYPE_PUBLICATION = "publication";
+const NUMBER_TYPE_APPLICATION = "application";
 
 chrome.action.onClicked.addListener((tab) => {
   if (isChatGptTab(tab)) {
@@ -59,10 +65,37 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     (async () => {
       try {
         const data = await collectPatentSections(
-          message.publicationNumber,
-          sender?.tab?.id ?? null
+          message.inputNumber ?? message.publicationNumber,
+          sender?.tab?.id ?? null,
+          message.numberType
         );
         sendResponse({ ok: true, data });
+      } catch (error) {
+        sendResponse({ ok: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
+  if (message?.type === "getAmendmentHistoryDetailInfo") {
+    (async () => {
+      try {
+        const applicationNumber = normalizeApplicationNumber(message.applicationNumber);
+        const accessKey = await getKiprisAccessKey();
+        if (!accessKey) {
+          throw new Error(
+            "KIPRIS API Key가 없어 변동 이력을 조회할 수 없습니다. 설정에서 키를 등록해 주세요."
+          );
+        }
+
+        const items = await getAmendmentHistoryDetailInfo(applicationNumber, accessKey);
+        sendResponse({
+          ok: true,
+          data: {
+            applicationNumber,
+            items,
+          },
+        });
       } catch (error) {
         sendResponse({ ok: false, error: error.message });
       }
@@ -276,18 +309,202 @@ function openSidePanelFromAction(tab, onDone) {
 }
 
 function normalizePublicationNumber(value) {
-  const normalized = String(value || "")
+  let normalized = String(value || "")
     .toUpperCase()
     .trim()
     .replace(/^KR/, "")
     .replace(/A$/, "")
     .replace(/[^0-9A-Z]/g, "");
 
+  if (normalized.startsWith("10")) {
+    normalized = normalized.slice(2);
+  }
+
   if (!normalized) {
     throw new Error("유효한 공개번호를 입력해 주세요.");
   }
 
   return normalized;
+}
+
+function normalizeApplicationNumber(value) {
+  const normalized = String(value || "")
+    .toUpperCase()
+    .trim()
+    .replace(/^KR/, "")
+    .replace(/[^0-9A-Z]/g, "");
+
+  if (!normalized) {
+    throw new Error("유효한 출원번호를 입력해 주세요.");
+  }
+
+  return normalized;
+}
+
+function sanitizeNumberType(value) {
+  return value === NUMBER_TYPE_APPLICATION
+    ? NUMBER_TYPE_APPLICATION
+    : NUMBER_TYPE_PUBLICATION;
+}
+
+function getSyncStorage(keys) {
+  return new Promise((resolve, reject) => {
+    chrome.storage.sync.get(keys, (result) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+      resolve(result || {});
+    });
+  });
+}
+
+async function getKiprisAccessKey() {
+  const result = await getSyncStorage(["kiprisApiKey"]);
+  return String(result?.kiprisApiKey || "").trim();
+}
+
+async function getOpeningNumber(applicationNumber, accessKey) {
+  const params = new URLSearchParams({
+    applicationNumber: String(applicationNumber).replace(/-/g, ""),
+    docsStart: "1",
+    docsCount: "1",
+    accessKey,
+  });
+
+  const response = await fetch(`${KIPRIS_APPLICATION_SEARCH_URL}?${params.toString()}`);
+  const xml = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`KIPRIS HTTP ${response.status}`);
+  }
+  if (/<!doctype html>|<html/i.test(xml)) {
+    throw new Error("KIPRIS API XML 대신 HTML 응답이 왔습니다. URL/권한을 확인하세요.");
+  }
+
+  const pick = (tag) =>
+    (
+      xml.match(new RegExp(`<${tag}>\\s*([\\s\\S]*?)\\s*</${tag}>`, "i"))?.[1] ?? ""
+    ).trim();
+
+  const resultCode = pick("resultCode");
+  const resultMsg = pick("resultMsg");
+  if (resultCode && resultCode !== "00") {
+    throw new Error(`KIPRIS 오류(${resultCode}): ${resultMsg || "unknown"}`);
+  }
+
+  const openingNumber =
+    pick("OpeningNumber") || pick("openingNumber") || pick("publicationNumber");
+  return openingNumber || null;
+}
+
+async function getAmendmentHistoryDetailInfo(applicationNumber, accessKey) {
+  const params = new URLSearchParams({
+    applicationNumber: String(applicationNumber).replace(/-/g, ""),
+    accessKey,
+  });
+
+  const response = await fetch(`${KIPRIS_AMENDMENT_HISTORY_URL}?${params.toString()}`);
+  const xml = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`KIPRIS HTTP ${response.status}`);
+  }
+  if (/<!doctype html>|<html/i.test(xml)) {
+    throw new Error("KIPRIS API XML 대신 HTML 응답이 왔습니다. URL/권한을 확인하세요.");
+  }
+
+  const pick = (source, tag) =>
+    (
+      source.match(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)</${tag}>`, "i"))?.[1] ??
+      ""
+    ).trim();
+
+  const resultCode = pick(xml, "resultCode");
+  const resultMsg = pick(xml, "resultMsg");
+  if (resultCode && resultCode !== "00") {
+    throw new Error(`KIPRIS 오류(${resultCode}): ${resultMsg || "unknown"}`);
+  }
+
+  const decodeXml = (value) =>
+    String(value || "")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&amp;/g, "&")
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'");
+
+  const htmlToText = (value) =>
+    decodeXml(value)
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/\r/g, "")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+
+  const blocks = [
+    ...xml.matchAll(
+      /<amendmentHistoryDetailInfo>([\s\S]*?)<\/amendmentHistoryDetailInfo>/gi
+    ),
+  ];
+
+  return blocks.map((match) => {
+    const block = match[1];
+    const petitionRaw = pick(block, "petitionclause");
+    const transferRaw = pick(block, "transferPetitionclause");
+
+    return {
+      applicationNumber: pick(block, "applicationNumber"),
+      receiptSendSerialNumber: pick(block, "receiptSendSerialNumber"),
+      receiptSendNumber: pick(block, "receiptSendNumber"),
+      petitionclauseNumber: pick(block, "petitionclauseNumber"),
+      changeTypeCode: pick(block, "changeTypeCode"),
+      changeTypeName: pick(block, "changeTypeName"),
+      petitionclauseRaw: petitionRaw,
+      petitionclause: htmlToText(petitionRaw),
+      transferReceiptDocNumber: pick(block, "transferReceiptDocNumber"),
+      transferPetitionclauseRaw: transferRaw,
+      transferPetitionclause: htmlToText(transferRaw),
+    };
+  });
+}
+
+async function resolvePublicationNumber(inputNumber, numberType) {
+  const normalizedType = sanitizeNumberType(numberType);
+
+  if (normalizedType === NUMBER_TYPE_APPLICATION) {
+    const applicationNumber = normalizeApplicationNumber(inputNumber);
+    const accessKey = await getKiprisAccessKey();
+    if (!accessKey) {
+      throw new Error(
+        "출원번호 조회에는 KIPRIS API Key가 필요합니다. 설정에서 키를 등록해 주세요."
+      );
+    }
+
+    const openingNumber = await getOpeningNumber(applicationNumber, accessKey);
+    if (!openingNumber) {
+      throw new Error("해당 출원번호의 공개번호를 찾지 못했습니다.");
+    }
+
+    const publicationNumber = normalizePublicationNumber(openingNumber);
+    return {
+      queryType: normalizedType,
+      inputNumber: applicationNumber,
+      publicationNumber,
+      resolvedFromApplication: true,
+      applicationNumber,
+    };
+  }
+
+  const publicationNumber = normalizePublicationNumber(inputNumber);
+  return {
+    queryType: normalizedType,
+    inputNumber: publicationNumber,
+    publicationNumber,
+    resolvedFromApplication: false,
+    applicationNumber: "",
+  };
 }
 
 function buildPatentUrl(publicationNumber) {
@@ -447,8 +664,13 @@ async function runExtractionWithRetry(tabId, maxAttempts = EXTRACTION_MAX_ATTEMP
   return lastExtracted;
 }
 
-async function collectPatentSections(publicationNumber, returnFocusTabId = null) {
-  const { normalized, url } = buildPatentUrl(publicationNumber);
+async function collectPatentSections(
+  inputNumber,
+  returnFocusTabId = null,
+  numberType = NUMBER_TYPE_PUBLICATION
+) {
+  const resolved = await resolvePublicationNumber(inputNumber, numberType);
+  const { normalized, url } = buildPatentUrl(resolved.publicationNumber);
   let tabId = null;
 
   try {
@@ -469,6 +691,10 @@ async function collectPatentSections(publicationNumber, returnFocusTabId = null)
     return {
       ...extracted,
       publicationNumber: normalized,
+      queryType: resolved.queryType,
+      inputNumber: resolved.inputNumber,
+      resolvedFromApplication: resolved.resolvedFromApplication,
+      applicationNumber: resolved.applicationNumber,
       sourceUrl: url,
     };
   } finally {
