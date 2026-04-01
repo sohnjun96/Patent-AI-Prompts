@@ -10,7 +10,7 @@
 - Claim Changes 탭:
   - KIPRIS 변동 이력 로드
   - 선택한 Receipt Group vs 직전 Group 비교
-  - AI 청구항 개정 해석(JSON) 실행
+  - AI 청구항 보정 해석(JSON) 실행
   - 요약 표 렌더링 (`청구항 | 종류 | 비고`)
   - 비고 클릭 시 수정보기 모달(diff)
     - 추가: 파란색 밑줄

@@ -98,6 +98,12 @@ const amendmentDetailModalMetaEl = document.getElementById(
 const amendmentDetailModalDiffEl = document.getElementById(
   "amendmentDetailModalDiff"
 );
+const amendmentDetailModalRelatedWrapEl = document.getElementById(
+  "amendmentDetailModalRelatedWrap"
+);
+const amendmentDetailModalRelatedListEl = document.getElementById(
+  "amendmentDetailModalRelatedList"
+);
 const closeAmendmentDetailModalBtnEl = document.getElementById(
   "closeAmendmentDetailModalBtn"
 );
@@ -188,6 +194,7 @@ let amendmentDetailModalState = {
   meta: "",
   beforeText: "",
   afterText: "",
+  relatedPreviousClaims: [],
 };
 
 if (
@@ -834,7 +841,9 @@ function openAmendmentDetailModal(detail) {
     !amendmentDetailModalEl ||
     !amendmentDetailModalTitleEl ||
     !amendmentDetailModalMetaEl ||
-    !amendmentDetailModalDiffEl
+    !amendmentDetailModalDiffEl ||
+    !amendmentDetailModalRelatedWrapEl ||
+    !amendmentDetailModalRelatedListEl
   ) {
     return;
   }
@@ -843,12 +852,21 @@ function openAmendmentDetailModal(detail) {
   const meta = String(detail?.meta || "").trim();
   const beforeText = String(detail?.beforeText || "");
   const afterText = String(detail?.afterText || "");
+  const relatedPreviousClaims = Array.isArray(detail?.relatedPreviousClaims)
+    ? detail.relatedPreviousClaims
+        .map((item) => ({
+          claimNo: String(item?.claimNo || "").trim(),
+          text: String(item?.text || "").trim(),
+        }))
+        .filter((item) => item.claimNo && item.text)
+    : [];
 
   amendmentDetailModalState = {
     title,
     meta,
     beforeText,
     afterText,
+    relatedPreviousClaims,
   };
 
   amendmentDetailModalTitleEl.textContent = title;
@@ -861,6 +879,28 @@ function openAmendmentDetailModal(detail) {
   } else {
     amendmentDetailModalDiffEl.innerHTML = diffHtml;
     amendmentDetailModalDiffEl.classList.remove("empty");
+  }
+
+  amendmentDetailModalRelatedListEl.textContent = "";
+  if (relatedPreviousClaims.length > 0) {
+    amendmentDetailModalRelatedWrapEl.classList.remove("hidden");
+    relatedPreviousClaims.forEach((item) => {
+      const card = document.createElement("article");
+      card.className = "amendmentDetailRelatedCard";
+
+      const titleEl = document.createElement("div");
+      titleEl.className = "amendmentDetailRelatedClaimNo";
+      titleEl.textContent = `청구항 ${item.claimNo}`;
+
+      const textEl = document.createElement("pre");
+      textEl.className = "amendmentDetailRelatedText";
+      textEl.textContent = item.text;
+
+      card.append(titleEl, textEl);
+      amendmentDetailModalRelatedListEl.appendChild(card);
+    });
+  } else {
+    amendmentDetailModalRelatedWrapEl.classList.add("hidden");
   }
 
   amendmentDetailModalEl.classList.remove("hidden");
@@ -2183,7 +2223,7 @@ function buildClaimChangePrompt(
   currentLabel
 ) {
   if (!state.prompts?.claimChanges) {
-    throw new Error("청구항 개정 해석 프롬프트를 불러오지 못했습니다.");
+    throw new Error("청구항 보정 해석 프롬프트를 불러오지 못했습니다.");
   }
 
   const payload = JSON.stringify(
@@ -2497,6 +2537,42 @@ function resolveCurrentClaimBaselineNo(item, previousClaimsMap) {
   return "";
 }
 
+function resolveCurrentClaimRelatedPreviousNos(item, baselineNo, previousClaimsMap) {
+  const noSet = new Set();
+  const pushNo = (value) => {
+    const normalized = String(value || "").trim();
+    if (!normalized) return;
+    if (!previousClaimsMap.has(normalized)) return;
+    noSet.add(normalized);
+  };
+
+  const hasCombination = Array.isArray(item?.change_types)
+    ? item.change_types.includes("claim_combination")
+    : false;
+  if (!hasCombination) {
+    return [];
+  }
+
+  pushNo(baselineNo);
+
+  const mergedFrom = Array.isArray(item?.merged_from_previous_claim_nos)
+    ? item.merged_from_previous_claim_nos
+    : [];
+  mergedFrom.forEach(pushNo);
+
+  const matched = Array.isArray(item?.matched_previous_claim_nos)
+    ? item.matched_previous_claim_nos
+    : [];
+  matched.forEach(pushNo);
+
+  const currentClaimNo = String(item?.current_claim_no || "").trim();
+  if (currentClaimNo) {
+    pushNo(currentClaimNo);
+  }
+
+  return Array.from(noSet).sort(compareClaimKeys);
+}
+
 function buildCurrentClaimRowNote(item, kindLabel) {
   const currentClaimNo = String(item.current_claim_no || "").trim() || "-";
 
@@ -2594,12 +2670,24 @@ function buildCurrentClaimDetail(item, context) {
 
   const currentClaimNo = String(item.current_claim_no || "").trim();
   const baselineNo = resolveCurrentClaimBaselineNo(item, previousClaimsMap);
+  const relatedPreviousClaimNos = resolveCurrentClaimRelatedPreviousNos(
+    item,
+    baselineNo,
+    previousClaimsMap
+  );
+  const relatedPreviousClaims = relatedPreviousClaimNos
+    .map((claimNo) => ({
+      claimNo,
+      text: String(previousClaimsMap.get(claimNo) || "").trim(),
+    }))
+    .filter((item) => item.claimNo && item.text);
 
   return {
     title: `청구항 ${currentClaimNo || "-"} 수정보기`,
     meta: `비교 기준: 이전 ${baselineNo || "-"} -> 현재 ${currentClaimNo || "-"}`,
     beforeText: String(previousClaimsMap.get(baselineNo) || ""),
     afterText: String(currentClaimsMap.get(currentClaimNo) || ""),
+    relatedPreviousClaims,
   };
 }
 
@@ -2854,7 +2942,7 @@ function renderClaimChangeAnalysis(context = null) {
 
 async function analyzeClaimChangesForSelectedGroup() {
   if (!state.prompts?.claimChanges) {
-    updateStatus("청구항 개정 해석 프롬프트를 불러오지 못했습니다.", true);
+    updateStatus("청구항 보정 해석 프롬프트를 불러오지 못했습니다.", true);
     return;
   }
 
@@ -2887,7 +2975,7 @@ async function analyzeClaimChangesForSelectedGroup() {
 
   renderClaimChangeAnalysis(context);
   setPending(true);
-  updateStatus("AI 청구항 개정 해석 분석 중...");
+  updateStatus("AI 청구항 보정 해석 분석 중...");
 
   let rawResponse = "";
   try {
@@ -2904,7 +2992,7 @@ async function analyzeClaimChangesForSelectedGroup() {
 
     state.amendmentAnalysisResult = parsed;
     state.amendmentAnalysisError = "";
-    updateStatus("완료: AI 청구항 개정 해석 결과를 생성했습니다.");
+    updateStatus("완료: AI 청구항 보정 해석 결과를 생성했습니다.");
   } catch (error) {
     state.amendmentAnalysisResult = null;
     state.amendmentAnalysisRaw = rawResponse || state.amendmentAnalysisRaw;

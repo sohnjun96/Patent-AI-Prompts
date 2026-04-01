@@ -242,7 +242,7 @@
                 Load amendment history to compare before/after claim text.
               </p>
               <section class="amendmentAnalysisSection">
-                <h3 class="amendmentSectionTitle">AI 청구항 개정 해석</h3>
+                <h3 class="amendmentSectionTitle">AI 청구항 보정 해석</h3>
                 <p id="amendmentAnalysisError" class="amendmentAnalysisError" hidden></p>
                 <div id="amendmentAnalysisSummary" class="amendmentAnalysisSummary empty">
                   분석 결과가 없습니다. Receipt Group을 선택한 뒤 Analyze Changes를 실행하세요.
@@ -516,6 +516,10 @@
         <div class="amendmentDetailDiffWrap">
           <pre id="amendmentDetailModalDiff" class="amendmentDetailDiff empty">표에서 비고를 클릭하면 수정보기가 표시됩니다.</pre>
         </div>
+        <section id="amendmentDetailModalRelatedWrap" class="amendmentDetailRelatedWrap hidden">
+          <h3 class="amendmentDetailRelatedTitle">병합 관련 직전 청구항</h3>
+          <div id="amendmentDetailModalRelatedList" class="amendmentDetailRelatedList"></div>
+        </section>
       </div>
     </div>
     <script src="chat.js"></script>
