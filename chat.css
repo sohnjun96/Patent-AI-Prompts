@@ -220,6 +220,13 @@ body {
   gap: 4px;
 }
 
+.panelHeadActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .claimsCountText {
   color: var(--muted);
   font-size: 13px;
@@ -956,6 +963,405 @@ code {
   max-width: 760px;
 }
 
+.amendmentAnalysisSection {
+  margin-top: 12px;
+  border: 1px solid #dbe5f1;
+  border-radius: 10px;
+  background: #f8fafc;
+  padding: 10px;
+}
+
+.amendmentSectionTitle {
+  margin: 0;
+  font-size: 15px;
+  color: #0f172a;
+}
+
+.amendmentAnalysisError {
+  margin: 8px 0 0;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #b91c1c;
+  font-size: 13px;
+  padding: 8px 10px;
+}
+
+.amendmentAnalysisSummary {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.amendmentAnalysisSummary.empty {
+  display: block;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.amendmentSummaryChip {
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #fff;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 9px;
+}
+
+.amendmentSummaryChip[data-type="claim_combination"] {
+  border-color: #bae6fd;
+  color: #0369a1;
+}
+
+.amendmentSummaryChip[data-type="reference_fix"] {
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.amendmentSummaryChip[data-type="claim_deletion"] {
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.amendmentSummaryChip[data-type="new_content_addition"] {
+  border-color: #bbf7d0;
+  color: #166534;
+}
+
+.amendmentSummaryChip[data-type="claim_renumbering"] {
+  border-color: #ddd6fe;
+  color: #5b21b6;
+}
+
+.amendmentAnalysisList {
+  margin-top: 10px;
+  display: grid;
+  gap: 12px;
+}
+
+.amendmentAnalysisList.empty {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.amendmentAnalysisTableWrap {
+  overflow-x: auto;
+}
+
+.amendmentAnalysisTable {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+  border: 1px solid #dbe5f1;
+  background: #fff;
+}
+
+.amendmentAnalysisTable th,
+.amendmentAnalysisTable td {
+  border-bottom: 1px solid #e2e8f0;
+  padding: 9px 10px;
+  text-align: left;
+  vertical-align: top;
+  font-size: 13px;
+}
+
+.amendmentAnalysisTable th {
+  background: #f8fafc;
+  color: #334155;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.amendmentAnalysisTable tr:last-child td {
+  border-bottom: none;
+}
+
+.amendmentAnalysisClaimCol {
+  width: 72px;
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.amendmentAnalysisKindCol {
+  width: 130px;
+}
+
+.amendmentAnalysisKindChip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  padding: 3px 9px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.amendmentAnalysisKindChip[data-kind="merge"] {
+  border-color: #bae6fd;
+  color: #0369a1;
+}
+
+.amendmentAnalysisKindChip[data-kind="reference_fix"] {
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.amendmentAnalysisKindChip[data-kind="deletion"] {
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.amendmentAnalysisKindChip[data-kind="addition"] {
+  border-color: #bbf7d0;
+  color: #166534;
+}
+
+.amendmentAnalysisKindChip[data-kind="change"] {
+  border-color: #fdba74;
+  color: #c2410c;
+}
+
+.amendmentAnalysisKindChip[data-kind="renumbering"] {
+  border-color: #ddd6fe;
+  color: #5b21b6;
+}
+
+.amendmentAnalysisKindChip[data-kind="same"] {
+  border-color: #cbd5e1;
+  color: #334155;
+}
+
+.amendmentAnalysisNoteBtn {
+  border: 0;
+  background: transparent;
+  color: #1d4ed8;
+  font: inherit;
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.amendmentAnalysisNoteBtn:hover {
+  color: #1e40af;
+}
+
+.amendmentAnalysisNoteText {
+  color: #64748b;
+}
+
+.amendmentAnalysisSectionList {
+  display: grid;
+  gap: 8px;
+}
+
+.amendmentAnalysisListHeading {
+  margin: 0;
+  font-size: 14px;
+  color: #334155;
+}
+
+.amendmentAnalysisCard {
+  border: 1px solid #dbe5f1;
+  border-radius: 10px;
+  background: #fff;
+  padding: 10px;
+}
+
+.amendmentAnalysisCard.deleted {
+  background: #fff7f7;
+}
+
+.amendmentAnalysisCardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.amendmentAnalysisCardTitle {
+  margin: 0;
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.amendmentAnalysisConfidence {
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+.amendmentAnalysisConfidence[data-confidence="high"] {
+  border-color: #86efac;
+  color: #166534;
+}
+
+.amendmentAnalysisConfidence[data-confidence="medium"] {
+  border-color: #fde68a;
+  color: #92400e;
+}
+
+.amendmentAnalysisConfidence[data-confidence="low"] {
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.amendmentAnalysisBadgeRow {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.amendmentAnalysisBadge {
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 12px;
+  padding: 3px 8px;
+}
+
+.amendmentAnalysisBadge[data-type="claim_combination"] {
+  border-color: #bae6fd;
+  color: #0369a1;
+}
+
+.amendmentAnalysisBadge[data-type="reference_fix"] {
+  border-color: #bfdbfe;
+  color: #1d4ed8;
+}
+
+.amendmentAnalysisBadge[data-type="claim_deletion"] {
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.amendmentAnalysisBadge[data-type="new_content_addition"] {
+  border-color: #bbf7d0;
+  color: #166534;
+}
+
+.amendmentAnalysisBadge[data-type="claim_renumbering"] {
+  border-color: #ddd6fe;
+  color: #5b21b6;
+}
+
+.amendmentAnalysisSummaryText {
+  margin: 8px 0 0;
+  color: #1f2937;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.amendmentAnalysisFields {
+  margin-top: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.amendmentAnalysisField {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.amendmentAnalysisFieldKey {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.amendmentAnalysisFieldValue {
+  color: #0f172a;
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.amendmentAnalysisListSection {
+  display: grid;
+  gap: 4px;
+}
+
+.amendmentAnalysisListTitle {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.amendmentAnalysisTextList {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 3px;
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.amendmentAnalysisRawWrap {
+  margin-top: 10px;
+  border-top: 1px dashed #cbd5e1;
+  padding-top: 8px;
+}
+
+.amendmentAnalysisRawWrap > summary {
+  cursor: pointer;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.amendmentAnalysisRaw {
+  margin: 8px 0 0;
+  border: 1px solid #dbe5f1;
+  border-radius: 8px;
+  background: #fff;
+  color: #1e293b;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 8px;
+}
+
+.amendmentAnalysisRaw.empty {
+  color: var(--muted);
+}
+
+.amendmentDetailModalCard {
+  width: min(980px, 100%);
+}
+
+.amendmentDetailDiffWrap {
+  border: 1px solid #dbe5f1;
+  border-radius: 10px;
+  background: #fff;
+  padding: 10px;
+  max-height: 62vh;
+  overflow: auto;
+}
+
+.amendmentDetailDiff {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+.amendmentDetailDiff.empty {
+  color: var(--muted);
+}
+
 .amendmentGroupRow {
   margin-top: 2px;
   display: grid;
@@ -1096,5 +1502,28 @@ code {
 
   .amendmentControlsGrid {
     grid-template-columns: 1fr;
+  }
+
+  .panelHeadActions {
+    width: 100%;
+  }
+
+  .amendmentAnalysisCardHead {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .amendmentAnalysisField {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  .amendmentAnalysisTable {
+    min-width: 0;
+  }
+
+  .amendmentAnalysisTable th,
+  .amendmentAnalysisTable td {
+    padding: 8px;
   }
 }

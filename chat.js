@@ -31,10 +31,15 @@ const addHighlightGroupBtnEl = document.getElementById("addHighlightGroupBtn");
 const descriptionClaimsColumnEl = document.getElementById("descriptionClaimsColumn");
 const descriptionRawEl = document.getElementById("descriptionRaw");
 const loadAmendmentHistoryBtnEl = document.getElementById("loadAmendmentHistoryBtn");
+const analyzeClaimChangesBtnEl = document.getElementById("analyzeClaimChangesBtn");
 const amendmentGroupSelectEl = document.getElementById("amendmentGroupSelect");
 const amendmentViewModeSelectEl = document.getElementById("amendmentViewModeSelect");
 const amendmentHistoryMetaEl = document.getElementById("amendmentHistoryMeta");
 const amendmentHistoryStatusEl = document.getElementById("amendmentHistoryStatus");
+const amendmentAnalysisSummaryEl = document.getElementById("amendmentAnalysisSummary");
+const amendmentAnalysisListEl = document.getElementById("amendmentAnalysisList");
+const amendmentAnalysisRawEl = document.getElementById("amendmentAnalysisRaw");
+const amendmentAnalysisErrorEl = document.getElementById("amendmentAnalysisError");
 const amendmentHistoryListEl = document.getElementById("amendmentHistoryList");
 
 const citationSourceSummaryEl = document.getElementById("citationSourceSummary");
@@ -83,6 +88,19 @@ const copyPromptModalBtnEl = document.getElementById("copyPromptModalBtn");
 const highlightEditorModalEl = document.getElementById("highlightEditorModal");
 const closeHighlightEditorBtnEl = document.getElementById("closeHighlightEditorBtn");
 const highlightEditorMountEl = document.getElementById("highlightEditorMount");
+const amendmentDetailModalEl = document.getElementById("amendmentDetailModal");
+const amendmentDetailModalTitleEl = document.getElementById(
+  "amendmentDetailModalTitle"
+);
+const amendmentDetailModalMetaEl = document.getElementById(
+  "amendmentDetailModalMeta"
+);
+const amendmentDetailModalDiffEl = document.getElementById(
+  "amendmentDetailModalDiff"
+);
+const closeAmendmentDetailModalBtnEl = document.getElementById(
+  "closeAmendmentDetailModalBtn"
+);
 
 const settingsModalEl = document.getElementById("settingsModal");
 const closeSettingsBtnEl = document.getElementById("closeSettingsBtn");
@@ -111,12 +129,21 @@ const EMPTY_DESCRIPTION = "아직 발명의 설명이 없습니다.";
 const EMPTY_PROMPT_PREVIEW = "아직 생성된 프롬프트가 없습니다.";
 const EMPTY_AMENDMENT_HISTORY = "No amendment history loaded yet.";
 const SESSION_STORAGE_KEY = "patentWorkbenchSessionV1";
+const CLAIM_CHANGE_TYPES = [
+  "claim_combination",
+  "reference_fix",
+  "claim_deletion",
+  "new_content_addition",
+  "claim_renumbering",
+];
+const CLAIM_CHANGE_CONFIDENCE_VALUES = new Set(["high", "medium", "low"]);
 
 const PROMPT_PATHS = {
   summary: "prompts/summary.txt",
   followup: "prompts/followup_chat.txt",
   claimComponent: "prompts/claim_component.txt",
   highlightTerms: "prompts/highlight_terms.txt",
+  claimChanges: "prompts/claim_changes.txt",
   citationSearch: "prompts/citation_search.txt",
   inventiveStep: "prompts/inventive_step_review.txt",
   evidenceFind: "prompts/evidence_find.txt",
@@ -139,6 +166,11 @@ const state = {
   amendmentHistoryApplicationNumber: "",
   amendmentSelectedGroupKey: "",
   amendmentViewMode: AMENDMENT_VIEW_MODE_MODIFIED,
+  amendmentAnalysisResult: null,
+  amendmentAnalysisRaw: "",
+  amendmentAnalysisError: "",
+  amendmentAnalysisLoading: false,
+  amendmentAnalysisContext: null,
   followupHistory: [],
   promptOutputs: createEmptyPromptOutputs(),
   settingModels: [],
@@ -150,6 +182,12 @@ let promptModalState = {
   key: "",
   title: "",
   text: "",
+};
+let amendmentDetailModalState = {
+  title: "",
+  meta: "",
+  beforeText: "",
+  afterText: "",
 };
 
 if (
@@ -232,6 +270,10 @@ function buildPersistedSession() {
     amendmentHistoryApplicationNumber: state.amendmentHistoryApplicationNumber,
     amendmentSelectedGroupKey: state.amendmentSelectedGroupKey,
     amendmentViewMode: state.amendmentViewMode,
+    amendmentAnalysisResult: state.amendmentAnalysisResult,
+    amendmentAnalysisRaw: state.amendmentAnalysisRaw,
+    amendmentAnalysisError: state.amendmentAnalysisError,
+    amendmentAnalysisContext: state.amendmentAnalysisContext,
     followupHistory: state.followupHistory,
     promptOutputs: state.promptOutputs,
     promptOptions: {
@@ -488,6 +530,10 @@ function updateControls() {
     Array.isArray(state.amendmentHistoryItems) &&
     Boolean(currentApplicationNumber) &&
     loadedApplicationNumber === currentApplicationNumber;
+  const hasSelectableAmendmentGroupOption =
+    amendmentGroupSelectEl &&
+    amendmentGroupSelectEl.options.length > 0 &&
+    Boolean(String(amendmentGroupSelectEl.options[0].value || "").trim());
 
   const canStart = hasKey && hasPromptSet && !state.pending;
   const canInteract = hasKey && hasPromptSet && hasPatent && !state.pending;
@@ -503,6 +549,11 @@ function updateControls() {
     hasPatent &&
     hasKiprisKey &&
     Boolean(currentApplicationNumber) &&
+    !state.pending;
+  const canAnalyzeClaimChanges =
+    hasLoadedAmendmentForCurrent &&
+    hasSelectableAmendmentGroupOption &&
+    Boolean(state.prompts?.claimChanges) &&
     !state.pending;
 
   keyNoticeEl.classList.toggle("hidden", hasKey);
@@ -534,14 +585,16 @@ function updateControls() {
     loadAmendmentHistoryBtnEl.disabled = !canLoadAmendmentHistory;
   }
   if (amendmentGroupSelectEl) {
-    const hasSelectableGroupOption =
-      amendmentGroupSelectEl.options.length > 0 &&
-      Boolean(String(amendmentGroupSelectEl.options[0].value || "").trim());
     amendmentGroupSelectEl.disabled =
-      state.pending || !hasLoadedAmendmentForCurrent || !hasSelectableGroupOption;
+      state.pending ||
+      !hasLoadedAmendmentForCurrent ||
+      !hasSelectableAmendmentGroupOption;
   }
   if (amendmentViewModeSelectEl) {
     amendmentViewModeSelectEl.disabled = state.pending || !hasLoadedAmendmentForCurrent;
+  }
+  if (analyzeClaimChangesBtnEl) {
+    analyzeClaimChangesBtnEl.disabled = !canAnalyzeClaimChanges;
   }
 
   for (const button of document.querySelectorAll(".claimAnalyzeBtn")) {
@@ -774,6 +827,49 @@ function openPromptModal(title, text, key = "") {
 
 function closePromptModal() {
   promptModalEl.classList.add("hidden");
+}
+
+function openAmendmentDetailModal(detail) {
+  if (
+    !amendmentDetailModalEl ||
+    !amendmentDetailModalTitleEl ||
+    !amendmentDetailModalMetaEl ||
+    !amendmentDetailModalDiffEl
+  ) {
+    return;
+  }
+
+  const title = String(detail?.title || "청구항 수정보기").trim();
+  const meta = String(detail?.meta || "").trim();
+  const beforeText = String(detail?.beforeText || "");
+  const afterText = String(detail?.afterText || "");
+
+  amendmentDetailModalState = {
+    title,
+    meta,
+    beforeText,
+    afterText,
+  };
+
+  amendmentDetailModalTitleEl.textContent = title;
+  amendmentDetailModalMetaEl.textContent = meta || "비교 기준 정보가 없습니다.";
+
+  const diffHtml = buildAmendmentDiffHtml(beforeText, afterText);
+  if (!diffHtml) {
+    amendmentDetailModalDiffEl.textContent = "표시할 변경 내용이 없습니다.";
+    amendmentDetailModalDiffEl.classList.add("empty");
+  } else {
+    amendmentDetailModalDiffEl.innerHTML = diffHtml;
+    amendmentDetailModalDiffEl.classList.remove("empty");
+  }
+
+  amendmentDetailModalEl.classList.remove("hidden");
+  closeAmendmentDetailModalBtnEl?.focus();
+}
+
+function closeAmendmentDetailModal() {
+  if (!amendmentDetailModalEl) return;
+  amendmentDetailModalEl.classList.add("hidden");
 }
 
 function openHighlightEditorModal() {
@@ -1990,6 +2086,839 @@ function formatClaimKeyLabel(claimKey, index) {
   return `Claim Item ${index + 1}`;
 }
 
+function getSelectedAmendmentComparisonContext(groupsOverride = null) {
+  const groups = Array.isArray(groupsOverride)
+    ? groupsOverride
+    : buildAmendmentReceiptGroups(
+        sanitizeAmendmentHistoryItems(state.amendmentHistoryItems)
+      );
+
+  if (!Array.isArray(groups) || groups.length === 0) {
+    return null;
+  }
+
+  let selectedGroupKey = normalizeAmendmentGroupKey(state.amendmentSelectedGroupKey);
+  if (!groups.some((group) => group.key === selectedGroupKey)) {
+    selectedGroupKey = groups[groups.length - 1].key;
+  }
+
+  const selectedIndex = groups.findIndex((group) => group.key === selectedGroupKey);
+  if (selectedIndex < 0) {
+    return null;
+  }
+
+  const selectedGroup = groups[selectedIndex];
+  const previousGroup = selectedIndex > 0 ? groups[selectedIndex - 1] : null;
+
+  return {
+    groups,
+    selectedIndex,
+    selectedGroup,
+    previousGroup,
+    selectedGroupKey,
+    previousGroupKey: String(previousGroup?.key || ""),
+    selectedLabel: formatAmendmentGroupLabel(selectedGroup, selectedIndex),
+    previousLabel: previousGroup
+      ? formatAmendmentGroupLabel(previousGroup, selectedIndex - 1)
+      : "이전 그룹 없음",
+  };
+}
+
+function normalizeClaimReferenceText(rawText) {
+  let text = String(rawText || "");
+  if (!text) return "";
+
+  const replaceRefNumber = (matchText) => matchText.replace(/\d+/g, "<REF>");
+  const referencePatterns = [
+    /청구항\s*제?\s*\d+\s*항?/gi,
+    /제\s*\d+\s*항/gi,
+    /\d+\s*항/gi,
+    /claim\s*\d+/gi,
+    /claims?\s*\d+/gi,
+  ];
+
+  referencePatterns.forEach((pattern) => {
+    text = text.replace(pattern, replaceRefNumber);
+  });
+
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function normalizeClaimArrayFromEffectiveClaims(group) {
+  if (!group || !(group.effectiveClaimsByKey instanceof Map)) {
+    return [];
+  }
+
+  const keys = Array.from(
+    group.effectiveClaimKeys?.length
+      ? group.effectiveClaimKeys
+      : group.effectiveClaimsByKey.keys()
+  ).sort(compareClaimKeys);
+
+  return keys
+    .map((claimKey) => {
+      const claimNo = String(claimKey || "").trim();
+      const rawText = String(group.effectiveClaimsByKey.get(claimKey) || "").trim();
+      if (!claimNo || !rawText) return null;
+      return {
+        claim_no: claimNo,
+        raw_text: rawText,
+        reference_normalized_text: normalizeClaimReferenceText(rawText),
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildClaimChangeAnalysisInput(selectedGroup, previousGroup) {
+  return {
+    previous_claims: normalizeClaimArrayFromEffectiveClaims(previousGroup),
+    current_claims: normalizeClaimArrayFromEffectiveClaims(selectedGroup),
+  };
+}
+
+function buildClaimChangePrompt(
+  previousClaims,
+  currentClaims,
+  previousLabel,
+  currentLabel
+) {
+  if (!state.prompts?.claimChanges) {
+    throw new Error("청구항 개정 해석 프롬프트를 불러오지 못했습니다.");
+  }
+
+  const payload = JSON.stringify(
+    {
+      previous_claims: Array.isArray(previousClaims) ? previousClaims : [],
+      current_claims: Array.isArray(currentClaims) ? currentClaims : [],
+    },
+    null,
+    2
+  );
+
+  return applyTemplate(
+    state.prompts.claimChanges,
+    basePromptVariables({
+      "{PREVIOUS_GROUP_LABEL}": String(previousLabel || "이전 그룹 없음"),
+      "{CURRENT_GROUP_LABEL}": String(currentLabel || "현재 그룹"),
+      "{CLAIM_CHANGE_INPUT_JSON}": payload,
+    })
+  );
+}
+
+function extractFirstJsonObjectText(rawText) {
+  const cleaned = stripCodeFence(rawText);
+  const start = cleaned.indexOf("{");
+  if (start === -1) return "";
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < cleaned.length; i += 1) {
+    const ch = cleaned[i];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (ch === "{") {
+      depth += 1;
+      continue;
+    }
+
+    if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return cleaned.slice(start, i + 1).trim();
+      }
+    }
+  }
+
+  return cleaned.slice(start).trim();
+}
+
+function sanitizeClaimChangeStringArray(value) {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set();
+  const output = [];
+  value.forEach((item) => {
+    const text = String(item || "").trim();
+    if (!text) return;
+    if (seen.has(text)) return;
+    seen.add(text);
+    output.push(text);
+  });
+  return output;
+}
+
+function sanitizeClaimChangeTypes(value, allowedTypes = CLAIM_CHANGE_TYPES) {
+  const allowedSet = new Set(allowedTypes);
+  return sanitizeClaimChangeStringArray(value).filter((type) =>
+    allowedSet.has(type)
+  );
+}
+
+function sanitizeClaimChangeConfidence(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return CLAIM_CHANGE_CONFIDENCE_VALUES.has(normalized) ? normalized : "low";
+}
+
+function sanitizeClaimChangeSummary(summary, derivedSummary) {
+  const pickCount = (key) => {
+    const direct = parseNonNegativeInteger(summary?.[key]);
+    if (direct !== null) return direct;
+    return parseNonNegativeInteger(derivedSummary?.[key]) || 0;
+  };
+
+  return {
+    claim_combination_count: pickCount("claim_combination_count"),
+    reference_fix_count: pickCount("reference_fix_count"),
+    claim_deletion_count: pickCount("claim_deletion_count"),
+    new_content_addition_count: pickCount("new_content_addition_count"),
+    claim_renumbering_count: pickCount("claim_renumbering_count"),
+  };
+}
+
+function deriveClaimChangeSummary(currentResults, deletedResults) {
+  const countByType = (items, type) =>
+    items.filter((item) => item.change_types.includes(type)).length;
+
+  return {
+    claim_combination_count:
+      countByType(currentResults, "claim_combination") +
+      countByType(deletedResults, "claim_combination"),
+    reference_fix_count: countByType(currentResults, "reference_fix"),
+    claim_deletion_count:
+      countByType(currentResults, "claim_deletion") +
+      countByType(deletedResults, "claim_deletion"),
+    new_content_addition_count: countByType(
+      currentResults,
+      "new_content_addition"
+    ),
+    claim_renumbering_count: countByType(currentResults, "claim_renumbering"),
+  };
+}
+
+function sanitizeClaimChangeCurrentResult(item) {
+  const renumberedRaw = item?.renumbered_from;
+  const renumberedFrom =
+    renumberedRaw === null || renumberedRaw === undefined
+      ? null
+      : String(renumberedRaw).trim() || null;
+
+  const referenceFixDetails = Array.isArray(item?.reference_fix_details)
+    ? item.reference_fix_details
+        .map((detail) => ({
+          before: String(detail?.before || "").trim(),
+          after: String(detail?.after || "").trim(),
+        }))
+        .filter((detail) => detail.before || detail.after)
+    : [];
+
+  return {
+    current_claim_no: String(item?.current_claim_no || "").trim(),
+    matched_previous_claim_nos: sanitizeClaimChangeStringArray(
+      item?.matched_previous_claim_nos
+    ),
+    change_types: sanitizeClaimChangeTypes(item?.change_types),
+    is_substantively_same: Boolean(item?.is_substantively_same),
+    summary: String(item?.summary || "").trim(),
+    renumbered_from: renumberedFrom,
+    merged_from_previous_claim_nos: sanitizeClaimChangeStringArray(
+      item?.merged_from_previous_claim_nos
+    ),
+    reference_fix_details: referenceFixDetails,
+    newly_added_fragments: sanitizeClaimChangeStringArray(
+      item?.newly_added_fragments
+    ),
+    deleted_fragments: sanitizeClaimChangeStringArray(item?.deleted_fragments),
+    confidence: sanitizeClaimChangeConfidence(item?.confidence),
+  };
+}
+
+function sanitizeClaimChangeDeletedResult(item) {
+  return {
+    previous_claim_no: String(item?.previous_claim_no || "").trim(),
+    change_types: sanitizeClaimChangeTypes(item?.change_types, [
+      "claim_combination",
+      "claim_deletion",
+    ]),
+    summary: String(item?.summary || "").trim(),
+    merged_into_current_claim_no:
+      item?.merged_into_current_claim_no === null ||
+      item?.merged_into_current_claim_no === undefined
+        ? null
+        : String(item?.merged_into_current_claim_no || "").trim() || null,
+    confidence: sanitizeClaimChangeConfidence(item?.confidence),
+  };
+}
+
+function parseClaimChangeAnalysis(rawText) {
+  const raw = String(rawText || "").trim();
+  if (!raw) {
+    throw new Error("AI 응답이 비어 있습니다.");
+  }
+
+  const extractedObject = extractFirstJsonObjectText(raw);
+  if (!extractedObject) {
+    throw new Error("AI 응답에서 JSON 객체를 찾지 못했습니다.");
+  }
+
+  let parsed = null;
+  try {
+    parsed = JSON.parse(extractedObject);
+  } catch (_error) {
+    throw new Error("AI 응답을 JSON으로 파싱하지 못했습니다.");
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("AI 응답 JSON이 객체 스키마가 아닙니다.");
+  }
+
+  const currentClaimResults = Array.isArray(parsed?.current_claim_results)
+    ? parsed.current_claim_results.map(sanitizeClaimChangeCurrentResult)
+    : [];
+  const deletedPreviousClaimResults = Array.isArray(
+    parsed?.deleted_previous_claim_results
+  )
+    ? parsed.deleted_previous_claim_results.map(sanitizeClaimChangeDeletedResult)
+    : [];
+
+  const derivedSummary = deriveClaimChangeSummary(
+    currentClaimResults,
+    deletedPreviousClaimResults
+  );
+
+  return {
+    version_info: {
+      previous_group: String(parsed?.version_info?.previous_group || "").trim(),
+      current_group: String(parsed?.version_info?.current_group || "").trim(),
+    },
+    summary: sanitizeClaimChangeSummary(parsed?.summary, derivedSummary),
+    current_claim_results: currentClaimResults,
+    deleted_previous_claim_results: deletedPreviousClaimResults,
+  };
+}
+
+function mapClaimChangeTypeLabel(type) {
+  if (type === "claim_combination") return "병합";
+  if (type === "reference_fix") return "인용항 정정";
+  if (type === "claim_deletion") return "삭제";
+  if (type === "new_content_addition") return "신규 추가";
+  if (type === "claim_renumbering") return "번호 정정";
+  return type;
+}
+
+function formatClaimNoListForDisplay(values) {
+  if (!Array.isArray(values) || values.length === 0) return "-";
+  return values.join(", ");
+}
+
+function toSingleLineText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function truncateText(value, maxLength = 80) {
+  const text = toSingleLineText(value);
+  if (!text) return "";
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength)}...`;
+}
+
+function resolveCurrentClaimRowKind(item) {
+  const types = new Set(item.change_types || []);
+  const hasMatchedPrevious =
+    Array.isArray(item.matched_previous_claim_nos) &&
+    item.matched_previous_claim_nos.length > 0;
+
+  if (types.has("claim_combination")) {
+    return { label: "병합", token: "merge" };
+  }
+  if (
+    types.has("reference_fix") &&
+    !types.has("new_content_addition") &&
+    !types.has("claim_renumbering")
+  ) {
+    return { label: "인용항 정정", token: "reference_fix" };
+  }
+  if (
+    types.has("claim_renumbering") &&
+    !types.has("new_content_addition") &&
+    !types.has("reference_fix")
+  ) {
+    return { label: "번호 정정", token: "renumbering" };
+  }
+  if (types.has("new_content_addition") && !hasMatchedPrevious) {
+    return { label: "추가", token: "addition" };
+  }
+  if (
+    types.has("new_content_addition") ||
+    (item.deleted_fragments || []).length > 0
+  ) {
+    return { label: "변경", token: "change" };
+  }
+  if (types.has("reference_fix") || types.has("claim_renumbering")) {
+    return { label: "변경", token: "change" };
+  }
+  if (item.is_substantively_same) {
+    return { label: "유지", token: "same" };
+  }
+
+  return { label: "변경", token: "change" };
+}
+
+function resolveCurrentClaimBaselineNo(item, previousClaimsMap) {
+  const renumberedFrom = String(item.renumbered_from || "").trim();
+  if (renumberedFrom) return renumberedFrom;
+
+  const matched = Array.isArray(item.matched_previous_claim_nos)
+    ? item.matched_previous_claim_nos
+    : [];
+  if (matched.length > 0) {
+    return String(matched[0] || "").trim();
+  }
+
+  const currentClaimNo = String(item.current_claim_no || "").trim();
+  if (currentClaimNo && previousClaimsMap.has(currentClaimNo)) {
+    return currentClaimNo;
+  }
+  return "";
+}
+
+function buildCurrentClaimRowNote(item, kindLabel) {
+  const currentClaimNo = String(item.current_claim_no || "").trim() || "-";
+
+  if (kindLabel === "병합") {
+    const mergedFrom = Array.isArray(item.merged_from_previous_claim_nos)
+      ? item.merged_from_previous_claim_nos
+      : [];
+    const filteredMerged = mergedFrom
+      .map((no) => String(no || "").trim())
+      .filter(Boolean);
+    if (filteredMerged.length > 0) {
+      return `${currentClaimNo}에 ${filteredMerged.join(", ")} 병합`;
+    }
+
+    const matched = Array.isArray(item.matched_previous_claim_nos)
+      ? item.matched_previous_claim_nos
+      : [];
+    const extra = matched
+      .map((no) => String(no || "").trim())
+      .filter((no) => no && no !== currentClaimNo);
+    if (extra.length > 0) {
+      return `${currentClaimNo}에 ${extra.join(", ")} 병합`;
+    }
+    return truncateText(item.summary || "병합", 70) || "병합";
+  }
+
+  if (kindLabel === "인용항 정정") {
+    const detail = Array.isArray(item.reference_fix_details)
+      ? item.reference_fix_details[0]
+      : null;
+    if (detail && (detail.before || detail.after)) {
+      const beforeText = truncateText(detail.before || "-", 40) || "-";
+      const afterText = truncateText(detail.after || "-", 40) || "-";
+      return `인용항을 정정(${beforeText} -> ${afterText})`;
+    }
+    return "인용항을 정정";
+  }
+
+  if (kindLabel === "번호 정정") {
+    const renumberedFrom = String(item.renumbered_from || "").trim();
+    if (renumberedFrom) {
+      return `번호 정정(${renumberedFrom} -> ${currentClaimNo})`;
+    }
+    return "번호만 정정";
+  }
+
+  if (kindLabel === "추가") {
+    const added = Array.isArray(item.newly_added_fragments)
+      ? item.newly_added_fragments[0]
+      : "";
+    if (added) {
+      return `추가 내용: ${truncateText(added, 70)}`;
+    }
+    return "신규 내용 추가";
+  }
+
+  if (kindLabel === "변경") {
+    const added = Array.isArray(item.newly_added_fragments)
+      ? item.newly_added_fragments[0]
+      : "";
+    const removed = Array.isArray(item.deleted_fragments)
+      ? item.deleted_fragments[0]
+      : "";
+    if (added && removed) {
+      return `추가 내용: ${truncateText(added, 40)} / 삭제 내용: ${truncateText(
+        removed,
+        40
+      )}`;
+    }
+    if (added) {
+      return `추가 내용: ${truncateText(added, 70)}`;
+    }
+    if (removed) {
+      return `삭제 내용: ${truncateText(removed, 70)}`;
+    }
+    return truncateText(item.summary || "변경", 70) || "변경";
+  }
+
+  if (kindLabel === "유지") {
+    return "-";
+  }
+
+  return truncateText(item.summary || "-", 70) || "-";
+}
+
+function buildCurrentClaimDetail(item, context) {
+  const previousClaimsMap =
+    context?.previousGroup?.effectiveClaimsByKey instanceof Map
+      ? context.previousGroup.effectiveClaimsByKey
+      : new Map();
+  const currentClaimsMap =
+    context?.selectedGroup?.effectiveClaimsByKey instanceof Map
+      ? context.selectedGroup.effectiveClaimsByKey
+      : new Map();
+
+  const currentClaimNo = String(item.current_claim_no || "").trim();
+  const baselineNo = resolveCurrentClaimBaselineNo(item, previousClaimsMap);
+
+  return {
+    title: `청구항 ${currentClaimNo || "-"} 수정보기`,
+    meta: `비교 기준: 이전 ${baselineNo || "-"} -> 현재 ${currentClaimNo || "-"}`,
+    beforeText: String(previousClaimsMap.get(baselineNo) || ""),
+    afterText: String(currentClaimsMap.get(currentClaimNo) || ""),
+  };
+}
+
+function buildDeletedClaimDetail(item, context) {
+  const previousClaimsMap =
+    context?.previousGroup?.effectiveClaimsByKey instanceof Map
+      ? context.previousGroup.effectiveClaimsByKey
+      : new Map();
+  const currentClaimsMap =
+    context?.selectedGroup?.effectiveClaimsByKey instanceof Map
+      ? context.selectedGroup.effectiveClaimsByKey
+      : new Map();
+  const previousClaimNo = String(item.previous_claim_no || "").trim();
+  const mergedIntoNo = String(item.merged_into_current_claim_no || "").trim();
+
+  return {
+    title: `직전 청구항 ${previousClaimNo || "-"} 수정보기`,
+    meta: mergedIntoNo
+      ? `삭제/병합 기준: 이전 ${previousClaimNo || "-"} -> 현재 ${mergedIntoNo}`
+      : `삭제 기준: 이전 ${previousClaimNo || "-"}`,
+    beforeText: String(previousClaimsMap.get(previousClaimNo) || ""),
+    afterText: mergedIntoNo ? String(currentClaimsMap.get(mergedIntoNo) || "") : "",
+  };
+}
+
+function buildClaimChangeTableRows(result, context) {
+  const rows = [];
+
+  const currentResults = Array.isArray(result?.current_claim_results)
+    ? result.current_claim_results
+    : [];
+  currentResults.forEach((item, index) => {
+    const claimNo = String(item.current_claim_no || "").trim();
+    if (!claimNo) return;
+
+    const kind = resolveCurrentClaimRowKind(item);
+    rows.push({
+      claim_no: claimNo,
+      kind_label: kind.label,
+      kind_token: kind.token,
+      note: buildCurrentClaimRowNote(item, kind.label),
+      detail: buildCurrentClaimDetail(item, context),
+      row_order: index,
+    });
+  });
+
+  const deletedResults = Array.isArray(result?.deleted_previous_claim_results)
+    ? result.deleted_previous_claim_results
+    : [];
+  deletedResults.forEach((item, index) => {
+    const claimNo = String(item.previous_claim_no || "").trim();
+    if (!claimNo) return;
+
+    const mergedInto = String(item.merged_into_current_claim_no || "").trim();
+    rows.push({
+      claim_no: claimNo,
+      kind_label: "삭제",
+      kind_token: "deletion",
+      note: mergedInto ? `${mergedInto}에 병합` : "-",
+      detail: buildDeletedClaimDetail(item, context),
+      row_order: currentResults.length + index,
+    });
+  });
+
+  rows.sort((a, b) => {
+    const claimCompare = compareClaimKeys(a.claim_no, b.claim_no);
+    if (claimCompare !== 0) return claimCompare;
+    return a.row_order - b.row_order;
+  });
+
+  return rows;
+}
+
+function createClaimChangeKindBadge(kindLabel, kindToken) {
+  const badge = document.createElement("span");
+  badge.className = "amendmentAnalysisKindChip";
+  badge.dataset.kind = String(kindToken || "");
+  badge.textContent = kindLabel;
+  return badge;
+}
+
+function createClaimChangeNoteButton(note, detail) {
+  const normalizedNote = String(note || "").trim() || "-";
+  const hasDetail = Boolean(
+    (detail?.beforeText && String(detail.beforeText).trim()) ||
+      (detail?.afterText && String(detail.afterText).trim())
+  );
+
+  if (!hasDetail || normalizedNote === "-") {
+    const text = document.createElement("span");
+    text.className = "amendmentAnalysisNoteText";
+    text.textContent = normalizedNote;
+    return text;
+  }
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "amendmentAnalysisNoteBtn";
+  button.textContent = normalizedNote || "수정보기";
+  button.addEventListener("click", () => {
+    openAmendmentDetailModal(detail);
+  });
+  return button;
+}
+
+function renderClaimChangeTable(rows) {
+  const wrap = document.createElement("div");
+  wrap.className = "amendmentAnalysisTableWrap";
+
+  const table = document.createElement("table");
+  table.className = "amendmentAnalysisTable";
+
+  const thead = document.createElement("thead");
+  const headRow = document.createElement("tr");
+  ["청구항", "종류", "비고"].forEach((label) => {
+    const th = document.createElement("th");
+    th.textContent = label;
+    headRow.appendChild(th);
+  });
+  thead.appendChild(headRow);
+
+  const tbody = document.createElement("tbody");
+  rows.forEach((row) => {
+    const tr = document.createElement("tr");
+
+    const claimTd = document.createElement("td");
+    claimTd.className = "amendmentAnalysisClaimCol";
+    claimTd.textContent = row.claim_no;
+
+    const kindTd = document.createElement("td");
+    kindTd.className = "amendmentAnalysisKindCol";
+    kindTd.appendChild(createClaimChangeKindBadge(row.kind_label, row.kind_token));
+
+    const noteTd = document.createElement("td");
+    noteTd.className = "amendmentAnalysisNoteCol";
+    noteTd.appendChild(createClaimChangeNoteButton(row.note, row.detail));
+
+    tr.append(claimTd, kindTd, noteTd);
+    tbody.appendChild(tr);
+  });
+
+  table.append(thead, tbody);
+  wrap.appendChild(table);
+  return wrap;
+}
+
+function renderClaimChangeSummary(summary) {
+  if (!amendmentAnalysisSummaryEl) return;
+
+  amendmentAnalysisSummaryEl.textContent = "";
+  amendmentAnalysisSummaryEl.classList.remove("empty");
+
+  const items = [
+    ["병합", summary?.claim_combination_count || 0, "claim_combination"],
+    ["인용항 정정", summary?.reference_fix_count || 0, "reference_fix"],
+    ["삭제", summary?.claim_deletion_count || 0, "claim_deletion"],
+    ["신규 추가", summary?.new_content_addition_count || 0, "new_content_addition"],
+    ["번호 정정", summary?.claim_renumbering_count || 0, "claim_renumbering"],
+  ];
+
+  items.forEach(([label, count, type]) => {
+    const chip = document.createElement("span");
+    chip.className = "amendmentSummaryChip";
+    chip.dataset.type = String(type);
+    chip.textContent = `${label} ${count}건`;
+    amendmentAnalysisSummaryEl.appendChild(chip);
+  });
+}
+
+function renderClaimChangeAnalysis(context = null) {
+  if (
+    !amendmentAnalysisSummaryEl ||
+    !amendmentAnalysisListEl ||
+    !amendmentAnalysisRawEl ||
+    !amendmentAnalysisErrorEl
+  ) {
+    return;
+  }
+
+  const resolvedContext = context || getSelectedAmendmentComparisonContext();
+  const selectedGroupKey = String(resolvedContext?.selectedGroupKey || "");
+  const previousGroupKey = String(resolvedContext?.previousGroupKey || "");
+  const hasMatchingContext =
+    Boolean(resolvedContext?.selectedGroup) &&
+    Boolean(state.amendmentAnalysisContext) &&
+    String(state.amendmentAnalysisContext.selectedGroupKey || "") ===
+      selectedGroupKey &&
+    String(state.amendmentAnalysisContext.previousGroupKey || "") ===
+      previousGroupKey;
+
+  const showError =
+    hasMatchingContext && Boolean(String(state.amendmentAnalysisError || "").trim());
+  amendmentAnalysisErrorEl.hidden = !showError;
+  amendmentAnalysisErrorEl.textContent = showError
+    ? `분석 오류: ${state.amendmentAnalysisError}`
+    : "";
+
+  if (state.amendmentAnalysisLoading) {
+    amendmentAnalysisSummaryEl.textContent = "AI 분석 중입니다...";
+    amendmentAnalysisSummaryEl.classList.add("empty");
+    amendmentAnalysisListEl.textContent = "분석 완료 후 요약 표가 표시됩니다.";
+    amendmentAnalysisListEl.classList.add("empty");
+    amendmentAnalysisRawEl.textContent = "분석 중입니다...";
+    amendmentAnalysisRawEl.classList.add("empty");
+    return;
+  }
+
+  if (!resolvedContext?.selectedGroup) {
+    amendmentAnalysisSummaryEl.textContent =
+      "변동 이력을 불러오면 AI 해석 결과를 확인할 수 있습니다.";
+    amendmentAnalysisSummaryEl.classList.add("empty");
+    amendmentAnalysisListEl.textContent = "표시할 분석 결과가 없습니다.";
+    amendmentAnalysisListEl.classList.add("empty");
+    amendmentAnalysisRawEl.textContent = "아직 분석 원본 JSON이 없습니다.";
+    amendmentAnalysisRawEl.classList.add("empty");
+    return;
+  }
+
+  if (!hasMatchingContext || !state.amendmentAnalysisResult) {
+    amendmentAnalysisSummaryEl.textContent =
+      "선택된 Receipt Group 기준으로 Analyze Changes를 실행하세요.";
+    amendmentAnalysisSummaryEl.classList.add("empty");
+    amendmentAnalysisListEl.textContent = "아직 렌더링할 요약 표가 없습니다.";
+    amendmentAnalysisListEl.classList.add("empty");
+    amendmentAnalysisRawEl.textContent = hasMatchingContext && state.amendmentAnalysisRaw
+      ? String(state.amendmentAnalysisRaw)
+      : "현재 선택 그룹에 대한 분석 원본 JSON이 없습니다.";
+    amendmentAnalysisRawEl.classList.toggle(
+      "empty",
+      !hasMatchingContext || !state.amendmentAnalysisRaw
+    );
+    return;
+  }
+
+  const result = state.amendmentAnalysisResult;
+  renderClaimChangeSummary(result.summary);
+
+  amendmentAnalysisListEl.textContent = "";
+  amendmentAnalysisListEl.classList.remove("empty");
+
+  const rows = buildClaimChangeTableRows(result, resolvedContext);
+  if (rows.length === 0) {
+    amendmentAnalysisListEl.textContent = "요약 표를 만들 수 있는 분석 결과가 없습니다.";
+    amendmentAnalysisListEl.classList.add("empty");
+  } else {
+    amendmentAnalysisListEl.appendChild(renderClaimChangeTable(rows));
+  }
+
+  amendmentAnalysisRawEl.textContent = JSON.stringify(result, null, 2);
+  amendmentAnalysisRawEl.classList.remove("empty");
+}
+
+async function analyzeClaimChangesForSelectedGroup() {
+  if (!state.prompts?.claimChanges) {
+    updateStatus("청구항 개정 해석 프롬프트를 불러오지 못했습니다.", true);
+    return;
+  }
+
+  const context = getSelectedAmendmentComparisonContext();
+  if (!context?.selectedGroup) {
+    updateStatus("먼저 변동 이력과 Receipt Group을 확인해 주세요.", true);
+    return;
+  }
+
+  const inputPayload = buildClaimChangeAnalysisInput(
+    context.selectedGroup,
+    context.previousGroup
+  );
+  const promptText = buildClaimChangePrompt(
+    inputPayload.previous_claims,
+    inputPayload.current_claims,
+    context.previousLabel,
+    context.selectedLabel
+  );
+
+  state.amendmentSelectedGroupKey = context.selectedGroupKey;
+  state.amendmentAnalysisLoading = true;
+  state.amendmentAnalysisResult = null;
+  state.amendmentAnalysisRaw = "";
+  state.amendmentAnalysisError = "";
+  state.amendmentAnalysisContext = {
+    selectedGroupKey: context.selectedGroupKey,
+    previousGroupKey: context.previousGroupKey,
+  };
+
+  renderClaimChangeAnalysis(context);
+  setPending(true);
+  updateStatus("AI 청구항 개정 해석 분석 중...");
+
+  let rawResponse = "";
+  try {
+    rawResponse = await requestModel(promptText, 0.1);
+    state.amendmentAnalysisRaw = rawResponse;
+
+    const parsed = parseClaimChangeAnalysis(rawResponse);
+    if (!parsed.version_info.previous_group) {
+      parsed.version_info.previous_group = context.previousLabel;
+    }
+    if (!parsed.version_info.current_group) {
+      parsed.version_info.current_group = context.selectedLabel;
+    }
+
+    state.amendmentAnalysisResult = parsed;
+    state.amendmentAnalysisError = "";
+    updateStatus("완료: AI 청구항 개정 해석 결과를 생성했습니다.");
+  } catch (error) {
+    state.amendmentAnalysisResult = null;
+    state.amendmentAnalysisRaw = rawResponse || state.amendmentAnalysisRaw;
+    state.amendmentAnalysisError =
+      error instanceof Error ? error.message : String(error || "분석 실패");
+    updateStatus(`오류: ${state.amendmentAnalysisError}`, true);
+  } finally {
+    state.amendmentAnalysisLoading = false;
+    setPending(false);
+    renderClaimChangeAnalysis(context);
+    queuePersistSession();
+  }
+}
+
 function renderAmendmentGroupSelect(groups, selectedKey) {
   if (!amendmentGroupSelectEl) return;
 
@@ -2105,6 +3034,7 @@ function renderAmendmentHistoryTab() {
   const viewMode = sanitizeAmendmentViewMode(state.amendmentViewMode);
   state.amendmentViewMode = viewMode;
   renderAmendmentViewModeSelect(viewMode);
+  renderClaimChangeAnalysis();
 
   const hasKiprisApiKey = Boolean(String(state.kiprisApiKey || "").trim());
   const currentApplicationNumber = resolveCurrentApplicationNumber();
@@ -2186,6 +3116,16 @@ function renderAmendmentHistoryTab() {
   }
 
   const selectedLabel = formatAmendmentGroupLabel(selectedGroup, selectedIndex);
+  const analysisContext = {
+    selectedGroup,
+    previousGroup,
+    selectedGroupKey: selectedGroup.key,
+    previousGroupKey: String(previousGroup?.key || ""),
+    selectedLabel,
+    previousLabel: previousGroup
+      ? formatAmendmentGroupLabel(previousGroup, selectedIndex - 1)
+      : "이전 그룹 없음",
+  };
   const modeLabel =
     viewMode === AMENDMENT_VIEW_MODE_MODIFIED
       ? "수정 보기"
@@ -2202,6 +3142,8 @@ function renderAmendmentHistoryTab() {
     amendmentHistoryStatusEl.textContent =
       `${selectedLabel} has no previous group. Comparison uses an empty baseline. [${modeLabel}]`;
   }
+
+  renderClaimChangeAnalysis(analysisContext);
 
   amendmentHistoryListEl.textContent = "";
   amendmentHistoryListEl.classList.remove("empty");
@@ -2363,6 +3305,11 @@ function clearPatentViews(options = {}) {
   state.amendmentHistoryItems = null;
   state.amendmentHistoryApplicationNumber = "";
   state.amendmentSelectedGroupKey = "";
+  state.amendmentAnalysisResult = null;
+  state.amendmentAnalysisRaw = "";
+  state.amendmentAnalysisError = "";
+  state.amendmentAnalysisLoading = false;
+  state.amendmentAnalysisContext = null;
   state.followupHistory = [];
   state.promptOutputs = createEmptyPromptOutputs();
   state.patentData = null;
@@ -2450,6 +3397,28 @@ function applyPersistedSession(session) {
   );
   state.amendmentSelectedGroupKey = String(session.amendmentSelectedGroupKey || "");
   state.amendmentViewMode = sanitizeAmendmentViewMode(session.amendmentViewMode);
+  try {
+    state.amendmentAnalysisResult = session.amendmentAnalysisResult
+      ? parseClaimChangeAnalysis(JSON.stringify(session.amendmentAnalysisResult))
+      : null;
+  } catch (_error) {
+    state.amendmentAnalysisResult = null;
+  }
+  state.amendmentAnalysisRaw = String(session.amendmentAnalysisRaw || "");
+  state.amendmentAnalysisError = String(session.amendmentAnalysisError || "");
+  state.amendmentAnalysisLoading = false;
+  state.amendmentAnalysisContext =
+    session.amendmentAnalysisContext &&
+    typeof session.amendmentAnalysisContext === "object"
+      ? {
+          selectedGroupKey: String(
+            session.amendmentAnalysisContext.selectedGroupKey || ""
+          ),
+          previousGroupKey: String(
+            session.amendmentAnalysisContext.previousGroupKey || ""
+          ),
+        }
+      : null;
   state.followupHistory = sanitizeFollowupHistory(session.followupHistory);
   state.promptOutputs = {
     citationSearch: String(
@@ -2665,6 +3634,11 @@ async function loadAmendmentHistoryForCurrentApplication() {
       resolvedApplicationNumber || applicationNumber;
     state.amendmentHistoryItems = items;
     state.amendmentSelectedGroupKey = "";
+    state.amendmentAnalysisResult = null;
+    state.amendmentAnalysisRaw = "";
+    state.amendmentAnalysisError = "";
+    state.amendmentAnalysisLoading = false;
+    state.amendmentAnalysisContext = null;
     renderAmendmentHistoryTab();
 
     if (items.length === 0) {
@@ -3164,6 +4138,13 @@ if (loadAmendmentHistoryBtnEl) {
   });
 }
 
+if (analyzeClaimChangesBtnEl) {
+  analyzeClaimChangesBtnEl.addEventListener("click", () => {
+    if (state.pending) return;
+    analyzeClaimChangesForSelectedGroup();
+  });
+}
+
 if (amendmentGroupSelectEl) {
   amendmentGroupSelectEl.addEventListener("change", () => {
     state.amendmentSelectedGroupKey = String(amendmentGroupSelectEl.value || "");
@@ -3293,6 +4274,12 @@ closeHighlightEditorBtnEl.addEventListener("click", () => {
   closeHighlightEditorModal();
 });
 
+if (closeAmendmentDetailModalBtnEl) {
+  closeAmendmentDetailModalBtnEl.addEventListener("click", () => {
+    closeAmendmentDetailModal();
+  });
+}
+
 copyPromptModalBtnEl.addEventListener("click", () => {
   if (!promptModalState.text) return;
   copyTextToClipboard(promptModalState.text)
@@ -3346,6 +4333,14 @@ highlightEditorModalEl.addEventListener("click", (event) => {
   }
 });
 
+if (amendmentDetailModalEl) {
+  amendmentDetailModalEl.addEventListener("click", (event) => {
+    if (event.target === amendmentDetailModalEl) {
+      closeAmendmentDetailModal();
+    }
+  });
+}
+
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   if (!settingsModalEl.classList.contains("hidden")) {
@@ -3354,6 +4349,10 @@ document.addEventListener("keydown", (event) => {
   }
   if (!highlightEditorModalEl.classList.contains("hidden")) {
     closeHighlightEditorModal();
+    return;
+  }
+  if (amendmentDetailModalEl && !amendmentDetailModalEl.classList.contains("hidden")) {
+    closeAmendmentDetailModal();
     return;
   }
   if (!promptModalEl.classList.contains("hidden")) {

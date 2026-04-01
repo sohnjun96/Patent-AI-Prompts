@@ -212,9 +212,14 @@
                     >Application No: -</span
                   >
                 </div>
-                <button id="loadAmendmentHistoryBtn" type="button">
-                  Load History
-                </button>
+                <div class="panelHeadActions">
+                  <button id="loadAmendmentHistoryBtn" type="button">
+                    Load History
+                  </button>
+                  <button id="analyzeClaimChangesBtn" type="button" disabled>
+                    Analyze Changes
+                  </button>
+                </div>
               </div>
               <div class="amendmentControlsGrid">
                 <div class="amendmentGroupRow">
@@ -235,6 +240,25 @@
               </div>
               <p id="amendmentHistoryStatus" class="metaText">
                 Load amendment history to compare before/after claim text.
+              </p>
+              <section class="amendmentAnalysisSection">
+                <h3 class="amendmentSectionTitle">AI 청구항 개정 해석</h3>
+                <p id="amendmentAnalysisError" class="amendmentAnalysisError" hidden></p>
+                <div id="amendmentAnalysisSummary" class="amendmentAnalysisSummary empty">
+                  분석 결과가 없습니다. Receipt Group을 선택한 뒤 Analyze Changes를 실행하세요.
+                </div>
+                <div id="amendmentAnalysisList" class="amendmentAnalysisList empty">
+                  아직 렌더링할 요약 표가 없습니다.
+                </div>
+                <details class="amendmentAnalysisRawWrap">
+                  <summary>원본 JSON 보기</summary>
+                  <pre id="amendmentAnalysisRaw" class="amendmentAnalysisRaw empty">
+아직 분석 원본 JSON이 없습니다.
+                  </pre>
+                </details>
+              </section>
+              <p class="amendmentLegend">
+                기존 raw diff는 보조 정보입니다. 위 AI 해석 결과를 우선 확인하세요.
               </p>
               <div id="amendmentHistoryList" class="amendmentHistoryList empty">
                 No amendment history loaded yet.
@@ -479,6 +503,18 @@
         <div id="highlightEditorMount" class="highlightEditorBody"></div>
         <div class="modalActions">
           <button id="addHighlightGroupBtn" type="button" class="secondaryButton">용어군 추가</button>
+        </div>
+      </div>
+    </div>
+    <div id="amendmentDetailModal" class="modalBackdrop hidden" role="dialog" aria-modal="true" aria-labelledby="amendmentDetailModalTitle">
+      <div class="modalCard amendmentDetailModalCard">
+        <div class="modalHead">
+          <h2 id="amendmentDetailModalTitle">청구항 수정보기</h2>
+          <button id="closeAmendmentDetailModalBtn" class="ghostButton" type="button">닫기</button>
+        </div>
+        <p id="amendmentDetailModalMeta" class="metaText"></p>
+        <div class="amendmentDetailDiffWrap">
+          <pre id="amendmentDetailModalDiff" class="amendmentDetailDiff empty">표에서 비고를 클릭하면 수정보기가 표시됩니다.</pre>
         </div>
       </div>
     </div>
